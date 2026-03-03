@@ -35,9 +35,7 @@ from common.paths import (
     get_workspace_dir,
 )
 from common.developer import ensure_developer
-
-
-MAX_LINES = 2000
+from common.config import get_session_commit_message, get_max_journal_lines
 
 
 # =============================================================================
@@ -111,14 +109,16 @@ def count_journal_files(dev_dir: Path, active_num: int) -> str:
     return "\n".join(result_lines)
 
 
-def create_new_journal_file(dev_dir: Path, num: int, developer: str, today: str) -> Path:
+def create_new_journal_file(
+    dev_dir: Path, num: int, developer: str, today: str, max_lines: int = 2000,
+) -> Path:
     """Create a new journal file."""
     prev_num = num - 1
     new_file = dev_dir / f"{FILE_JOURNAL_PREFIX}{num}.md"
 
     content = f"""# Journal - {developer} (Part {num})
 
-> Continuation from `{FILE_JOURNAL_PREFIX}{prev_num}.md` (archived at ~{MAX_LINES} lines)
+> Continuation from `{FILE_JOURNAL_PREFIX}{prev_num}.md` (archived at ~{max_lines} lines)
 > Started: {today}
 
 ---
@@ -283,7 +283,8 @@ def update_index(
 # =============================================================================
 
 def _auto_commit_workspace(repo_root: Path) -> None:
-    """Stage .trellis/workspace and commit with a fixed message."""
+    """Stage .trellis/workspace and commit with a configured message."""
+    commit_msg = get_session_commit_message(repo_root)
     subprocess.run(
         ["git", "add", "-A", ".trellis/workspace"],
         cwd=repo_root,
@@ -298,13 +299,13 @@ def _auto_commit_workspace(repo_root: Path) -> None:
         print("[OK] No workspace changes to commit.", file=sys.stderr)
         return
     commit_result = subprocess.run(
-        ["git", "commit", "-m", "chore: record session"],
+        ["git", "commit", "-m", commit_msg],
         cwd=repo_root,
         capture_output=True,
         text=True,
     )
     if commit_result.returncode == 0:
-        print("[OK] Auto-committed: chore: record session", file=sys.stderr)
+        print(f"[OK] Auto-committed: {commit_msg}", file=sys.stderr)
     else:
         print(f"[WARN] Auto-commit failed: {commit_result.stderr.strip()}", file=sys.stderr)
 
@@ -329,6 +330,8 @@ def add_session(
     if not dev_dir:
         print("Error: Workspace directory not found", file=sys.stderr)
         return 1
+
+    max_lines = get_max_journal_lines(repo_root)
 
     index_file = dev_dir / "index.md"
     today = datetime.now().strftime("%Y-%m-%d")
@@ -359,10 +362,10 @@ def add_session(
     target_file = journal_file
     target_num = current_num
 
-    if current_lines + content_lines > MAX_LINES:
+    if current_lines + content_lines > max_lines:
         target_num = current_num + 1
-        print(f"[!] Exceeds {MAX_LINES} lines, creating {FILE_JOURNAL_PREFIX}{target_num}.md", file=sys.stderr)
-        target_file = create_new_journal_file(dev_dir, target_num, developer, today)
+        print(f"[!] Exceeds {max_lines} lines, creating {FILE_JOURNAL_PREFIX}{target_num}.md", file=sys.stderr)
+        target_file = create_new_journal_file(dev_dir, target_num, developer, today, max_lines)
         print(f"Created: {target_file}", file=sys.stderr)
 
     # Append session content
