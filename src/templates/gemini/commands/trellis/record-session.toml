@@ -1,4 +1,4 @@
-description = "Record work progress after code is committed"
+description = "Record work progress after human has tested and committed code"
 
 prompt = """
 [!] **Prerequisite**: This command should only be used AFTER the human has tested and committed the code.
