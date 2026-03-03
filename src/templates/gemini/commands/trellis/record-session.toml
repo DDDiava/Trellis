@@ -39,9 +39,9 @@ EOF
 
 **Auto-completes**:
 - [OK] Appends session to journal-N.md
-- [OK] Auto-detects line count, creates new file if >2000 lines
+- [OK] Auto-detects line count, creates new file if exceeds `max_journal_lines` (default 2000)
 - [OK] Updates index.md (Total Sessions +1, Last Active, line stats, history)
-- [OK] Auto-commits workspace changes (`chore: record session`)
+- [OK] Auto-commits workspace changes (uses `session_commit_message` from config.yaml, default `chore: record journal`)
 
 > Use `--no-commit` to skip auto-commit if needed.
 
