@@ -46,7 +46,7 @@ function walkOpenCodeTemplateDir(): Map<string, string> {
     for (const entry of readdirSync(absDir)) {
       if (shouldExclude(entry)) continue;
       const absEntry = path.join(absDir, entry);
-      const relEntry = relDir ? path.join(relDir, entry) : entry;
+      const relEntry = relDir ? path.posix.join(relDir, entry) : entry;
       const stat = statSync(absEntry);
       if (stat.isDirectory()) {
         // Skip commands/ — that's sourced from common/ templates, not the
@@ -55,7 +55,7 @@ function walkOpenCodeTemplateDir(): Map<string, string> {
         walk(relEntry);
       } else {
         const content = readFileSync(absEntry, "utf-8");
-        files.set(path.join(".opencode", relEntry), content);
+        files.set(path.posix.join(".opencode", relEntry), content);
       }
     }
   }

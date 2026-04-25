@@ -10,6 +10,11 @@ Usage:
     python3 task.py list-context <dir>          # List jsonl entries
     python3 task.py start <dir>                 # Set as current task
     python3 task.py finish                      # Clear current task
+    python3 task.py worktree <dir> [--dry-run]  # Create task branch/worktree
+    python3 task.py create-pr [dir] [--dry-run] # Create or stage a task PR
+    python3 task.py sync-pr [dir]               # Sync PR metadata/body
+    python3 task.py review-pr [dir]             # Write local PR review artifact
+    python3 task.py finish-pr [dir]             # Mark PR ready for review
     python3 task.py set-branch <dir> <branch>   # Set git branch
     python3 task.py set-base-branch <dir> <branch>  # Set PR target branch
     python3 task.py set-scope <dir> <scope>     # Set scope for PR title
@@ -50,6 +55,13 @@ from common.task_store import (
     cmd_set_scope,
     cmd_add_subtask,
     cmd_remove_subtask,
+)
+from common.task_pr import (
+    cmd_worktree,
+    cmd_create_pr,
+    cmd_sync_pr,
+    cmd_review_pr,
+    cmd_finish_pr,
 )
 from common.task_context import (
     cmd_add_context,
@@ -259,6 +271,11 @@ Usage:
   python3 task.py list-context <dir>                 List jsonl entries
   python3 task.py start <dir>                        Set as current task
   python3 task.py finish                             Clear current task
+  python3 task.py worktree <dir> [--dry-run]         Create task branch/worktree
+  python3 task.py create-pr [dir] [--dry-run]        Create or stage a task PR
+  python3 task.py sync-pr [dir]                      Sync PR metadata/body
+  python3 task.py review-pr [dir]                    Write local PR review artifact
+  python3 task.py finish-pr [dir]                    Mark PR ready for human review
   python3 task.py set-branch <dir> <branch>          Set git branch
   python3 task.py set-base-branch <dir> <branch>     Set PR target branch
   python3 task.py set-scope <dir> <scope>            Set scope for PR title
@@ -280,6 +297,8 @@ Examples:
   python3 task.py create "Add login feature" --slug add-login --package cli
   python3 task.py create "Child task" --slug child --parent .trellis/tasks/01-21-parent
   python3 task.py add-context <dir> implement .trellis/spec/cli/backend/auth.md "Auth guidelines"
+  python3 task.py worktree <dir> --dry-run
+  python3 task.py create-pr <dir> --draft --dry-run
   python3 task.py set-branch <dir> task/add-login
   python3 task.py start .trellis/tasks/01-21-add-login
   python3 task.py finish
@@ -366,6 +385,54 @@ def main() -> int:
     # finish
     subparsers.add_parser("finish", help="Clear current task")
 
+    # worktree
+    p_worktree = subparsers.add_parser("worktree", help="Create task branch/worktree")
+    p_worktree.add_argument("task", nargs="?", help="Task directory/name (defaults to current task)")
+    p_worktree.add_argument("--base", help="Base branch/ref")
+    p_worktree.add_argument("--branch", help="Worktree branch name")
+    p_worktree.add_argument("--path", help="Worktree path")
+    p_worktree.add_argument("--force", action="store_true", help="Pass --force to git worktree add")
+    p_worktree.add_argument("--dry-run", action="store_true", help="Print planned command without mutating metadata")
+    p_worktree.add_argument("--json", action="store_true", help="Print JSON output")
+
+    # create-pr
+    p_create_pr = subparsers.add_parser("create-pr", help="Create or stage a task PR")
+    p_create_pr.add_argument("task", nargs="?", help="Task directory/name (defaults to current task)")
+    p_create_pr.add_argument("--base", help="PR base branch")
+    p_create_pr.add_argument("--head", help="PR head branch")
+    p_create_pr.add_argument("--title", help="PR title")
+    p_create_pr.add_argument("--draft", action="store_true", help="Create a draft PR")
+    p_create_pr.add_argument("--label", action="append", default=[], help="PR label (repeatable)")
+    p_create_pr.add_argument("--milestone", help="PR milestone")
+    p_create_pr.add_argument("--reviewer", action="append", default=[], help="PR reviewer (repeatable)")
+    p_create_pr.add_argument("--issue", help="Linked issue URL or number")
+    p_create_pr.add_argument("--body-file", help="Existing body file to preserve outside Trellis markers")
+    p_create_pr.add_argument("--push", dest="push", action=argparse.BooleanOptionalAction, default=True, help="Push the head branch before creating the PR")
+    p_create_pr.add_argument("--dry-run", action="store_true", help="Print planned PR flow without mutating metadata")
+    p_create_pr.add_argument("--json", action="store_true", help="Print JSON output")
+
+    # sync-pr
+    p_sync_pr = subparsers.add_parser("sync-pr", help="Sync PR metadata/body")
+    p_sync_pr.add_argument("task", nargs="?", help="Task directory/name (defaults to current task)")
+    p_sync_pr.add_argument("--pr", help="PR number, URL, or branch")
+    p_sync_pr.add_argument("--body-file", help="Local PR body file to update instead of GitHub")
+    p_sync_pr.add_argument("--dry-run", action="store_true", help="Preview sync without mutating metadata")
+    p_sync_pr.add_argument("--json", action="store_true", help="Print JSON output")
+
+    # review-pr
+    p_review_pr = subparsers.add_parser("review-pr", help="Write local PR review artifact")
+    p_review_pr.add_argument("task", nargs="?", help="Task directory/name (defaults to current task)")
+    p_review_pr.add_argument("--dry-run", action="store_true", help="Preview artifact path without writing")
+    p_review_pr.add_argument("--json", action="store_true", help="Print JSON output")
+
+    # finish-pr
+    p_finish_pr = subparsers.add_parser("finish-pr", help="Mark PR ready for human review")
+    p_finish_pr.add_argument("task", nargs="?", help="Task directory/name (defaults to current task)")
+    p_finish_pr.add_argument("--pr", help="PR number, URL, or branch")
+    p_finish_pr.add_argument("--force", action="store_true", help="Bypass review/CI metadata gates")
+    p_finish_pr.add_argument("--dry-run", action="store_true", help="Preview ready transition")
+    p_finish_pr.add_argument("--json", action="store_true", help="Print JSON output")
+
     # set-branch
     p_branch = subparsers.add_parser("set-branch", help="Set git branch")
     p_branch.add_argument("dir", help="Task directory")
@@ -418,6 +485,11 @@ def main() -> int:
         "list-context": cmd_list_context,
         "start": cmd_start,
         "finish": cmd_finish,
+        "worktree": cmd_worktree,
+        "create-pr": cmd_create_pr,
+        "sync-pr": cmd_sync_pr,
+        "review-pr": cmd_review_pr,
+        "finish-pr": cmd_finish_pr,
         "set-branch": cmd_set_branch,
         "set-base-branch": cmd_set_base_branch,
         "set-scope": cmd_set_scope,

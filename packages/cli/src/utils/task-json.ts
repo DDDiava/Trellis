@@ -2,11 +2,12 @@
  * Canonical task.json shape — single source of truth shared by all TS writers.
  *
  * The runtime Python writer is `.trellis/scripts/common/task_store.py` in
- * `cmd_create` (lines ~147-172). This TS factory mirrors that 24-field shape
+ * `cmd_create` in `.trellis/scripts/common/task_store.py`. This TS factory mirrors
+ * that canonical shape
  * so bootstrap tasks (trellis init) and migration tasks (trellis update
  * --migrate) produce structurally identical task.json files.
  *
- * Field names, order, and null defaults match task_store.py exactly.
+ * Field names, order, and default values match task_store.py exactly.
  */
 
 export interface TaskJson {
@@ -28,6 +29,19 @@ export interface TaskJson {
   worktree_path: string | null;
   commit: string | null;
   pr_url: string | null;
+  pr_number: number | null;
+  pr_status: string;
+  review_status: string;
+  ci_status: string;
+  issue_url: string;
+  milestone: string;
+  labels: string[];
+  reviewers: string[];
+  merge_strategy: string;
+  integration_branch: string;
+  last_pr_sync_at: string;
+  last_agent_review_at: string;
+  validation: Record<string, string>;
   subtasks: string[];
   children: string[];
   parent: string | null;
@@ -39,7 +53,7 @@ export interface TaskJson {
 /**
  * Produce a fully-populated canonical-shape TaskJson.
  *
- * All 24 fields are emitted in canonical order. `overrides` shallow-merges on
+ * All canonical fields are emitted in order. `overrides` shallow-merges on
  * top — callers should supply the per-task values (id, name, title, assignee,
  * createdAt, etc.) and leave null-default fields untouched unless they have a
  * real value.
@@ -65,6 +79,24 @@ export function emptyTaskJson(overrides: Partial<TaskJson> = {}): TaskJson {
     worktree_path: null,
     commit: null,
     pr_url: null,
+    pr_number: null,
+    pr_status: "none",
+    review_status: "none",
+    ci_status: "unknown",
+    issue_url: "",
+    milestone: "",
+    labels: [],
+    reviewers: [],
+    merge_strategy: "squash",
+    integration_branch: "",
+    last_pr_sync_at: "",
+    last_agent_review_at: "",
+    validation: {
+      lint: "unknown",
+      typecheck: "unknown",
+      test: "unknown",
+      build: "unknown",
+    },
     subtasks: [],
     children: [],
     parent: null,

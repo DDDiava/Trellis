@@ -43,6 +43,19 @@ class TaskData(TypedDict, total=False):
     worktree_path: str | None
     commit: str | None
     pr_url: str | None
+    pr_number: int | None
+    pr_status: str | None
+    review_status: str | None
+    ci_status: str | None
+    issue_url: str | None
+    milestone: str | None
+    labels: list[str]
+    reviewers: list[str]
+    merge_strategy: str | None
+    integration_branch: str | None
+    last_pr_sync_at: str | None
+    last_agent_review_at: str | None
+    validation: list[str] | dict[str, object]
     subtasks: list[str]
     children: list[str]
     parent: str | None

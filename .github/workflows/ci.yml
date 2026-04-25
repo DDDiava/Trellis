@@ -2,13 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/v0.5.0-beta]
     paths:
       - 'packages/cli/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/ci.yml'
   pull_request:
-    branches: [main]
+    branches: [main, feat/v0.5.0-beta]
     paths:
       - 'packages/cli/**'
       - 'pnpm-lock.yaml'
@@ -34,8 +34,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
       - name: Build
-        run: pnpm --filter @mindfoldhq/trellis build
+        run: pnpm build
 
       - name: Verify build output
         run: |

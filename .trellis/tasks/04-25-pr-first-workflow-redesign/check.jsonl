@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/cli/backend/index.md", "reason": "Review changed backend/script files against package guidelines."}
+{"file": ".trellis/spec/cli/backend/script-conventions.md", "reason": "Verify Python scripts stay cross-platform and template-safe."}
+{"file": ".trellis/spec/cli/backend/error-handling.md", "reason": "Verify command failures and fallbacks are explicit and actionable."}
+{"file": ".trellis/spec/cli/backend/quality-guidelines.md", "reason": "Quality review for maintainability and scope control."}
+{"file": ".trellis/spec/cli/unit-test/index.md", "reason": "Test coverage expectations for changed CLI behavior."}
+{"file": ".trellis/spec/cli/unit-test/conventions.md", "reason": "Verify tests follow local Vitest conventions."}
+{"file": ".trellis/spec/cli/unit-test/integration-patterns.md", "reason": "Review command-style tests and temp repo usage."}
+{"file": ".trellis/spec/guides/cross-platform-thinking-guide.md", "reason": "Verify path, subprocess, and user-facing command wording."}
+{"file": ".trellis/tasks/04-25-pr-first-workflow-redesign/research/external-plan-summary.md", "reason": "Check implementation against supplied PR-first plan."}

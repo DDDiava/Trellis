@@ -1,37 +1,74 @@
 ---
 name: trellis-finish-work
-description: "Wrap up the current session: verify quality gate passed, remind user to commit, archive completed tasks, and record session progress to the developer journal. Use when done coding and ready to end the session."
+description: "Prepare the current Trellis task for PR review: run final checks, create or sync a draft PR, write a local review artifact, and mark the PR ready for human review. Use when code is written and needs PR handoff."
 ---
 
 # Finish Work
 
-Wrap up the current session.
+Prepare the current Trellis task for PR review.
 
-## Step 1: Quality Gate
+## Step 1: Final Quality Gate
 
-`trellis-check` should have already run in Phase 3. If not, trigger it now and do not proceed until lint, type-check, tests, and spec compliance pass.
+Run the Phase 3 verification path before changing PR state:
 
-## Step 2: Remind User to Commit
+- `trellis-check` for spec compliance, lint, type-check, and tests
+- `trellis-update-spec` when this task produced reusable project knowledge
 
-If there are uncommitted changes:
+Do not continue until failures are fixed or clearly documented.
 
-> "Please review the changes and commit when ready."
+## Step 2: Prepare Or Update The PR
 
-Do NOT run `git commit` — the human commits after testing.
+Inspect the current task and branch state:
 
-## Step 3: Record Session (after commit)
+```bash
+git status --short
+python3 ./.trellis/scripts/task.py list --mine
+```
 
-Archive finished tasks (judge by work status, not the `status` field):
+If there is no task branch/worktree metadata yet, prepare it:
+
+```bash
+python3 ./.trellis/scripts/task.py worktree <task-name> --dry-run
+```
+
+Create or stage the PR body:
+
+```bash
+python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
+```
+
+If a PR already exists, refresh metadata and replace only the Trellis-managed body section:
+
+```bash
+python3 ./.trellis/scripts/task.py sync-pr <task-name>
+```
+
+## Step 3: Agent Review Artifact
+
+Create a local review artifact for the human reviewer:
+
+```bash
+python3 ./.trellis/scripts/task.py review-pr <task-name>
+```
+
+Then mark the PR ready for human review when CI/review metadata allows:
+
+```bash
+python3 ./.trellis/scripts/task.py finish-pr <task-name>
+```
+
+## Step 4: Human Handoff
+
+Tell the user:
+
+> "The PR is prepared for human review. Please review, push/merge as appropriate, then run `/finish-work` again after merge if you want to archive and record the session."
+
+Do not archive by default before merge. After the PR is merged and the user confirms the task is done, archive and record the session:
 
 ```bash
 python3 ./.trellis/scripts/task.py archive <task-name>
-```
-
-Append a session entry (auto-handles journal rotation, line count, index update):
-
-```bash
 python3 ./.trellis/scripts/add_session.py \
   --title "Session Title" \
-  --commit "hash1,hash2" \
+  --commit "merge-or-final-commit" \
   --summary "Brief summary"
 ```

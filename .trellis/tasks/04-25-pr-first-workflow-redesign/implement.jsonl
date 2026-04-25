@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/cli/backend/index.md", "reason": "Entry point for CLI backend and Python script guidelines."}
+{"file": ".trellis/spec/cli/backend/script-conventions.md", "reason": "Python script conventions for .trellis/scripts and installable templates."}
+{"file": ".trellis/spec/cli/backend/error-handling.md", "reason": "Clear command failure and fallback behavior for git/gh flows."}
+{"file": ".trellis/spec/cli/backend/quality-guidelines.md", "reason": "Backend quality bar for scoped, maintainable changes."}
+{"file": ".trellis/spec/cli/backend/migrations.md", "reason": "Template/version migration considerations when changing installable files."}
+{"file": ".trellis/spec/cli/unit-test/index.md", "reason": "Unit test entry point for changed CLI behavior."}
+{"file": ".trellis/spec/cli/unit-test/conventions.md", "reason": "Vitest naming, structure, and assertion conventions."}
+{"file": ".trellis/spec/cli/unit-test/integration-patterns.md", "reason": "Patterns for command and template integration-ish tests."}
+{"file": ".trellis/spec/guides/cross-platform-thinking-guide.md", "reason": "Cross-platform path, Python, git, and subprocess guidance."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Template sync and helper reuse guidance."}
+{"file": ".trellis/tasks/04-25-pr-first-workflow-redesign/research/external-plan-summary.md", "reason": "Condensed user plan, MVP scope, non-goals, and repo findings."}

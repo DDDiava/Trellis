@@ -34,7 +34,10 @@ export function createTemplateReader(importMetaUrl: string): TemplateReader {
   const __dirname = dirname(fileURLToPath(importMetaUrl));
 
   function readTemplate(relativePath: string): string {
-    return readFileSync(join(__dirname, relativePath), "utf-8");
+    return readFileSync(join(__dirname, relativePath), "utf-8").replace(
+      /\r\n?/g,
+      "\n",
+    );
   }
 
   function listFiles(dir: string): string[] {

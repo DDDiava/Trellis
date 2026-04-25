@@ -403,6 +403,21 @@ describe("initializeHashes", () => {
     expect(hashes).toHaveProperty(".claude/commands/start.md");
   });
 
+  it("hashes managed singleton files outside managed directories", () => {
+    fs.mkdirSync(path.join(tmpDir, ".trellis"), { recursive: true });
+    const prTemplate = path.join(tmpDir, ".github", "PULL_REQUEST_TEMPLATE.md");
+    fs.mkdirSync(path.dirname(prTemplate), { recursive: true });
+    fs.writeFileSync(prTemplate, "## PR");
+
+    const count = initializeHashes(tmpDir);
+    const hashes = loadHashes(tmpDir);
+
+    expect(count).toBe(1);
+    expect(hashes[".github/PULL_REQUEST_TEMPLATE.md"]).toBe(
+      computeHash("## PR"),
+    );
+  });
+
   it("excludes workspace and tasks directories", () => {
     fs.mkdirSync(path.join(tmpDir, ".trellis", "workspace"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".trellis", "workspace", "data.md"), "user data");

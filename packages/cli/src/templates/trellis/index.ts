@@ -45,6 +45,7 @@ export const commonGit = readTemplate("scripts/common/git.py");
 export const commonTypes = readTemplate("scripts/common/types.py");
 export const commonTasks = readTemplate("scripts/common/tasks.py");
 export const commonTaskContext = readTemplate("scripts/common/task_context.py");
+export const commonTaskPr = readTemplate("scripts/common/task_pr.py");
 export const commonTaskStore = readTemplate("scripts/common/task_store.py");
 export const commonSessionContext = readTemplate(
   "scripts/common/session_context.py",
@@ -67,6 +68,9 @@ export const addSessionScript = readTemplate("scripts/add_session.py");
 export const workflowMdTemplate = readTemplate("workflow.md");
 export const configYamlTemplate = readTemplate("config.yaml");
 export const gitignoreTemplate = readTemplate("gitignore.txt");
+export const pullRequestTemplate = readTemplate(
+  "github/PULL_REQUEST_TEMPLATE.md",
+);
 
 /**
  * Get all script templates as a map of relative path to content
@@ -92,6 +96,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/types.py", commonTypes);
   scripts.set("common/tasks.py", commonTasks);
   scripts.set("common/task_context.py", commonTaskContext);
+  scripts.set("common/task_pr.py", commonTaskPr);
   scripts.set("common/task_store.py", commonTaskStore);
   scripts.set("common/session_context.py", commonSessionContext);
   scripts.set("common/packages_context.py", commonPackagesContext);

@@ -2913,7 +2913,7 @@ describe("regression: research agent persists findings to task dir", () => {
     it(`[${rel}] has Write tool and persist instruction`, () => {
       const content = fs.readFileSync(path.join(repoRoot, rel), "utf-8");
       // Frontmatter tool list must include Write (capitalized form)
-      const fm = content.split("---\n")[1] ?? "";
+      const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)?.[1] ?? "";
       expect(fm).toMatch(/tools:\s*[^\n]*\bWrite\b/);
       // Body must reference persist target
       expect(content).toContain("{TASK_DIR}/research/");

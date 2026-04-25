@@ -7,7 +7,7 @@
 1. **Plan before code** — figure out what to do before you start
 2. **Specs injected, not remembered** — guidelines are injected via hook/skill, not recalled from memory
 3. **Persist everything** — research, decisions, and lessons all go to files; conversations get compacted, files don't
-4. **Incremental development** — one task at a time
+4. **PR-first completion** — medium and large tasks finish as reviewable PRs, not loose commits
 5. **Capture learnings** — after each task, review and write new knowledge back to spec
 
 ---
@@ -62,15 +62,21 @@ python3 ./.trellis/scripts/task.py set-branch <name> <branch>
 python3 ./.trellis/scripts/task.py set-base-branch <name> <branch>    # PR target
 python3 ./.trellis/scripts/task.py set-scope <name> <scope>
 
+# PR-first branch/worktree + review flow
+python3 ./.trellis/scripts/task.py worktree <name> [--dry-run]
+python3 ./.trellis/scripts/task.py create-pr [name] [--draft] [--dry-run]
+python3 ./.trellis/scripts/task.py sync-pr [name]
+python3 ./.trellis/scripts/task.py review-pr [name]
+python3 ./.trellis/scripts/task.py finish-pr [name]
+
 # Hierarchy (parent/child)
 python3 ./.trellis/scripts/task.py add-subtask <parent> <child>
 python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>
-
-# PR creation
-python3 ./.trellis/scripts/task.py create-pr [name] [--dry-run]
 ```
 
 > Run `python3 ./.trellis/scripts/task.py --help` to see the authoritative, up-to-date list.
+
+**PR-first lifecycle**: after planning, create an isolated branch/worktree for non-trivial work, open or stage a draft PR with `create-pr`, keep the Trellis-managed PR body section current with `sync-pr`, generate a local review artifact with `review-pr`, then use `finish-pr` to mark the PR ready for human review. Archive only after the PR is merged or the user explicitly confirms local-only completion.
 
 **Current-task mechanism**: `task.py start` writes the task path into `.trellis/.current-task`. Hook-capable platforms auto-inject this at session start, so the AI knows what you're working on without being told.
 
@@ -99,8 +105,8 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed 
 
 ```
 Phase 1: Plan    → figure out what to do (brainstorm + research → prd.md)
-Phase 2: Execute → write code and pass quality checks
-Phase 3: Finish  → distill lessons + wrap-up
+Phase 2: Execute → write code, prepare a draft PR, and pass quality checks
+Phase 3: Finish  → sync/review the PR, distill lessons, then wrap up after merge
 ```
 
 ### Phase 1: Plan
@@ -372,6 +378,19 @@ The platform prelude auto-handles the context load requirement:
 
 [/Kilo, Antigravity, Windsurf]
 
+For medium or large tasks, prefer an isolated task branch/worktree before implementation:
+
+```bash
+python3 ./.trellis/scripts/task.py worktree <task-name> --dry-run
+python3 ./.trellis/scripts/task.py worktree <task-name>
+```
+
+When code is ready for review, create or stage the draft PR without making GitHub a hard dependency:
+
+```bash
+python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
+```
+
 #### 2.2 Quality check `[required · repeatable]`
 
 [Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi]
@@ -420,6 +439,14 @@ Load the `trellis-check` skill and do a final verification:
 
 If issues are found → fix → re-check, until green.
 
+Then prepare the PR handoff artifacts:
+
+```bash
+python3 ./.trellis/scripts/task.py sync-pr <task-name>
+python3 ./.trellis/scripts/task.py review-pr <task-name>
+python3 ./.trellis/scripts/task.py finish-pr <task-name>
+```
+
 #### 3.2 Debug retrospective `[on demand]`
 
 If this task involved repeated debugging (the same issue was fixed multiple times), load the `trellis-break-loop` skill to:
@@ -440,7 +467,7 @@ Update the docs under `.trellis/spec/` accordingly. Even if the conclusion is "n
 
 #### 3.4 Wrap-up reminder
 
-After the above, remind the user they can run `/finish-work` to wrap up (archive the task, record the session).
+After the above, remind the user they can run `/finish-work` to prepare or update the PR for human review. Do not archive by default before merge; after the PR is merged, archive the task and record the session.
 
 ---
 
@@ -476,5 +503,5 @@ For agent-capable platforms, do NOT edit code in the main session; dispatch `tre
 [/workflow-state:in_progress]
 
 [workflow-state:completed]
-User commits changes; then run task.py archive.
+User merges or confirms local-only completion; then run task.py archive.
 [/workflow-state:completed]

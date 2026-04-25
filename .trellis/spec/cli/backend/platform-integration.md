@@ -420,6 +420,115 @@ Extension-backed platforms keep hook-equivalent behavior in platform-native exte
 
 ---
 
+## Scenario: Managed Singleton Templates Outside Platform Directories
+
+### 1. Scope / Trigger
+
+Use this pattern when adding or changing a managed template file that is not inside a platform config directory and is not part of the generic spec templates. Examples include root-level singleton templates such as `.github/PULL_REQUEST_TEMPLATE.md`.
+
+This is an infra integration because one file must be registered across init, update, template hash tracking, backup, and tests. Adding only the init write path creates a template that fresh projects receive but existing projects never update or protect.
+
+### 2. Signatures
+
+TypeScript template export:
+
+```typescript
+export const pullRequestTemplate: string = reader.read("github/PULL_REQUEST_TEMPLATE.md");
+```
+
+Init/write path:
+
+```typescript
+await writeFile(path.join(cwd, ".github", "PULL_REQUEST_TEMPLATE.md"), pullRequestTemplate, writeOptions);
+```
+
+Update template collection:
+
+```typescript
+templateFiles.set(".github/PULL_REQUEST_TEMPLATE.md", pullRequestTemplate);
+```
+
+Template hash and backup registration:
+
+```typescript
+const TEMPLATE_FILES = [".github/PULL_REQUEST_TEMPLATE.md"] as const;
+const BACKUP_FILES = [".github/PULL_REQUEST_TEMPLATE.md"] as const;
+```
+
+### 3. Contracts
+
+| Surface | Contract |
+|---------|----------|
+| Template source | Store reusable singleton content under `packages/cli/src/templates/trellis/...` unless it is intentionally dogfooded from the project root |
+| Init | `createWorkflowStructure()` or the owning configurator writes the file to the same relative path used by update |
+| Update | `collectTemplateFiles()` returns the file with the exact same relative path key |
+| Hash tracking | `initializeHashes()` includes the singleton so user edits can be detected |
+| Backup | Full backup includes the singleton before update or migration overwrites it |
+| Path keys | Use POSIX-style relative keys such as `.github/PULL_REQUEST_TEMPLATE.md`; do not let Windows backslashes become hash/update keys |
+| Protected data | Do not register user-owned paths such as `.trellis/tasks`, `.trellis/workspace`, or `.trellis/spec` as managed singleton templates |
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|-----------|-------------------|
+| Fresh `trellis init` | Singleton file is created at the documented path |
+| Fresh project immediately runs `trellis update` | No spurious "new file" or "changed" result for the singleton |
+| Existing project with unmodified singleton runs update | File can be updated and hash refreshed |
+| Existing project with user-modified singleton runs update | User edit is detected; update prompts/skips/backs up according to normal template rules |
+| Windows path collection | Hash and update keys remain POSIX-style and match init output |
+| File exists in init but not update collection | Regression: existing projects never receive managed changes |
+| File exists in update collection but not init | Regression: fresh projects report an unexpected new managed file on first update |
+
+### 5. Good / Base / Bad Cases
+
+- Good: `.github/PULL_REQUEST_TEMPLATE.md` is exported from `templates/trellis/index.ts`, written by `createWorkflowStructure()`, collected by `collectTemplateFiles()`, tracked in template hashes, backed up, and covered by init/update/hash tests.
+- Base: A repo-local helper file is created only for Trellis's own development and is not intended to ship; keep it out of template collection and hash tracking.
+- Bad: A new singleton is written during init only. Existing projects never get it, and user edits cannot be protected because the hash file never knew about it.
+
+### 6. Tests Required
+
+| Test | Required assertions |
+|------|---------------------|
+| Init integration | Running `init` writes the singleton to the expected relative path with non-empty expected content |
+| Update/template collection | `collectTemplateFiles()` includes the same relative key used by init |
+| Template hash | `initializeHashes()` records the singleton key; a modified file is treated as user-modified |
+| Backup/update regression | Full backup includes the singleton before update can overwrite it |
+| Path separator regression | Relative keys are normalized with `/` even when collection walks a Windows-style path |
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// workflow.ts
+await writeFile(path.join(cwd, ".github", "PULL_REQUEST_TEMPLATE.md"), template, writeOptions);
+
+// update.ts / template-hash.ts / backup list: no registration
+```
+
+Fresh projects get the file, but existing projects never see updates and user edits are invisible to template hash protection.
+
+#### Correct
+
+```typescript
+// templates/trellis/index.ts
+export const pullRequestTemplate = reader.read("github/PULL_REQUEST_TEMPLATE.md");
+
+// workflow.ts
+await writeFile(path.join(cwd, ".github", "PULL_REQUEST_TEMPLATE.md"), pullRequestTemplate, writeOptions);
+
+// update.ts
+templateFiles.set(".github/PULL_REQUEST_TEMPLATE.md", pullRequestTemplate);
+
+// template-hash.ts / update backup support
+const TEMPLATE_FILES = [".github/PULL_REQUEST_TEMPLATE.md"] as const;
+const BACKUP_FILES = [".github/PULL_REQUEST_TEMPLATE.md"] as const;
+```
+
+One managed singleton has one relative path key across all lifecycle surfaces.
+
+---
+
 ## What You DON'T Need to Update
 
 These are now **automatically derived** from the registry:

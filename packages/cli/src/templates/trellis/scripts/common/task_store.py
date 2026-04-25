@@ -49,6 +49,7 @@ from .task_utils import (
     resolve_task_dir,
     run_task_hooks,
 )
+from .task_pr import ensure_pr_metadata_defaults
 
 
 # =============================================================================
@@ -219,6 +220,24 @@ def cmd_create(args: argparse.Namespace) -> int:
         "worktree_path": None,
         "commit": None,
         "pr_url": None,
+        "pr_number": None,
+        "pr_status": "none",
+        "review_status": "none",
+        "ci_status": "unknown",
+        "issue_url": "",
+        "milestone": "",
+        "labels": [],
+        "reviewers": [],
+        "merge_strategy": "squash",
+        "integration_branch": "",
+        "last_pr_sync_at": "",
+        "last_agent_review_at": "",
+        "validation": {
+            "lint": "unknown",
+            "typecheck": "unknown",
+            "test": "unknown",
+            "build": "unknown",
+        },
         "subtasks": [],
         "children": [],
         "parent": None,
@@ -320,6 +339,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
     if task_json_path.is_file():
         data = read_json(task_json_path)
         if data:
+            ensure_pr_metadata_defaults(data)
             data["status"] = "completed"
             data["completedAt"] = today
             write_json(task_json_path, data)
@@ -431,6 +451,9 @@ def cmd_add_subtask(args: argparse.Namespace) -> int:
         print(colored("Error: Failed to read task.json", Colors.RED), file=sys.stderr)
         return 1
 
+    ensure_pr_metadata_defaults(parent_data)
+    ensure_pr_metadata_defaults(child_data)
+
     # Check if child already has a parent
     existing_parent = child_data.get("parent")
     if existing_parent:
@@ -484,6 +507,9 @@ def cmd_remove_subtask(args: argparse.Namespace) -> int:
         print(colored("Error: Failed to read task.json", Colors.RED), file=sys.stderr)
         return 1
 
+    ensure_pr_metadata_defaults(parent_data)
+    ensure_pr_metadata_defaults(child_data)
+
     # Remove child from parent's children list
     parent_children = parent_data.get("children", [])
     child_dir_name = child_dir.name
@@ -526,6 +552,7 @@ def cmd_set_branch(args: argparse.Namespace) -> int:
     if not data:
         return 1
 
+    ensure_pr_metadata_defaults(data)
     data["branch"] = branch
     write_json(task_json, data)
 
@@ -560,6 +587,7 @@ def cmd_set_base_branch(args: argparse.Namespace) -> int:
     if not data:
         return 1
 
+    ensure_pr_metadata_defaults(data)
     data["base_branch"] = base_branch
     write_json(task_json, data)
 
@@ -592,6 +620,7 @@ def cmd_set_scope(args: argparse.Namespace) -> int:
     if not data:
         return 1
 
+    ensure_pr_metadata_defaults(data)
     data["scope"] = scope
     write_json(task_json, data)
 

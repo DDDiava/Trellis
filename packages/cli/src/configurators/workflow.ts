@@ -8,6 +8,7 @@ import {
   workflowMdTemplate,
   configYamlTemplate,
   gitignoreTemplate,
+  pullRequestTemplate,
 } from "../templates/trellis/index.js";
 
 // Import markdown templates
@@ -106,6 +107,13 @@ export async function createWorkflowStructure(
   await writeFile(
     path.join(cwd, DIR_NAMES.WORKFLOW, "config.yaml"),
     configYamlTemplate,
+  );
+
+  // Copy GitHub PR template for PR-first Trellis workflows.
+  ensureDir(path.join(cwd, ".github"));
+  await writeFile(
+    path.join(cwd, ".github", "PULL_REQUEST_TEMPLATE.md"),
+    pullRequestTemplate,
   );
 
   // Create workspace/ with index.md

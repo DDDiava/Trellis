@@ -17,6 +17,7 @@ from pathlib import Path
 
 from .io import read_json
 from .paths import FILE_TASK_JSON
+from .task_pr import ensure_pr_metadata_defaults
 from .types import TaskInfo
 
 
@@ -36,6 +37,8 @@ def load_task(task_dir: Path) -> TaskInfo | None:
     data = read_json(task_json)
     if not data:
         return None
+
+    ensure_pr_metadata_defaults(data)
 
     return TaskInfo(
         dir_name=task_dir.name,

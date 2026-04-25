@@ -38,6 +38,7 @@ import {
   configYamlTemplate,
   gitignoreTemplate,
   workflowMdTemplate,
+  pullRequestTemplate,
 } from "../templates/trellis/index.js";
 
 import {
@@ -390,6 +391,7 @@ function collectTemplateFiles(
   files.set(`${DIR_NAMES.WORKFLOW}/workflow.md`, workflowMdTemplate);
   // workspace/index.md stays excluded — it's runtime-appended by add_session.py
   // (journal index) and has no script-parsed structure.
+  files.set(".github/PULL_REQUEST_TEMPLATE.md", pullRequestTemplate);
 
   // Platform-specific templates (only for configured platforms)
   for (const platformId of platforms) {
@@ -653,6 +655,11 @@ function backupFile(
 const BACKUP_DIRS = ALL_MANAGED_DIRS;
 
 /**
+ * Managed singleton template files outside managed platform directories.
+ */
+const BACKUP_FILES = [".github/PULL_REQUEST_TEMPLATE.md"];
+
+/**
  * Patterns to exclude from backup (user data that shouldn't be backed up)
  */
 const BACKUP_EXCLUDE_PATTERNS = [
@@ -722,6 +729,18 @@ function createFullBackup(cwd: string): string | null {
       }
       backupFile(cwd, backupDir, relativePath);
     }
+  }
+
+  for (const relativePath of BACKUP_FILES) {
+    const fullPath = path.join(cwd, relativePath);
+    if (!fs.existsSync(fullPath) || shouldExcludeFromBackup(relativePath)) {
+      continue;
+    }
+    if (!hasFiles) {
+      fs.mkdirSync(backupDir, { recursive: true });
+      hasFiles = true;
+    }
+    backupFile(cwd, backupDir, relativePath);
   }
 
   return hasFiles ? backupDir : null;
@@ -2028,7 +2047,7 @@ export async function update(options: UpdateOptions): Promise<void> {
           }
         }
 
-        // Build task.json — canonical 24-field shape via shared factory.
+        // Build task.json — canonical shape via shared factory.
         const taskTitle = `Migrate to v${cliVersion}`;
         const todayStr = today.toISOString().split("T")[0];
         const taskJson = emptyTaskJson({

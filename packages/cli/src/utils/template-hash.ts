@@ -196,6 +196,11 @@ export function getModificationStatus(
 const TEMPLATE_DIRS = ALL_MANAGED_DIRS;
 
 /**
+ * Managed singleton template files outside managed platform directories.
+ */
+const TEMPLATE_FILES = [".github/PULL_REQUEST_TEMPLATE.md"];
+
+/**
  * Patterns to exclude from hash tracking
  */
 const EXCLUDE_FROM_HASH = [
@@ -240,7 +245,7 @@ function collectFiles(
   const entries = fs.readdirSync(fullDir, { withFileTypes: true });
 
   for (const entry of entries) {
-    const relativePath = path.join(dir, entry.name);
+    const relativePath = path.posix.join(dir.replace(/\\/g, "/"), entry.name);
 
     if (shouldExcludeFromHash(relativePath)) {
       continue;
@@ -281,6 +286,19 @@ export function initializeHashes(cwd: string): number {
       } catch {
         // Skip files that can't be read (binary, etc.)
       }
+    }
+  }
+
+  for (const relativePath of TEMPLATE_FILES) {
+    const fullPath = path.join(cwd, relativePath);
+    if (!fs.existsSync(fullPath) || shouldExcludeFromHash(relativePath)) {
+      continue;
+    }
+    try {
+      const content = fs.readFileSync(fullPath, "utf-8");
+      hashes[relativePath] = computeHash(content);
+    } catch {
+      // Skip files that can't be read (binary, etc.)
     }
   }
 

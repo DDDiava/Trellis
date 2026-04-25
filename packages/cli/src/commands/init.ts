@@ -409,7 +409,7 @@ function getBootstrapTaskJson(
   const today = new Date().toISOString().split("T")[0];
   const relatedFiles = getBootstrapRelatedFiles(projectType, packages);
 
-  // Canonical 24-field shape via emptyTaskJson factory.
+  // Canonical task.json shape via emptyTaskJson factory.
   // Checklist items (previously stored as structured `subtasks`) are now
   // rendered as `- [ ]` items in prd.md; task.json.subtasks is always
   // string[] (child task dir names) per the canonical schema.
