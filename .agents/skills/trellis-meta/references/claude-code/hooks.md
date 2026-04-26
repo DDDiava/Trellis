@@ -1,34 +1,39 @@
 # Hooks System
 
-Claude Code hooks for automatic context injection and quality enforcement.
+Claude Code hooks inject Trellis context and workflow breadcrumbs. Current hooks do not use Ralph Loop or `worktree.yaml`.
 
 ---
 
-## Overview
-
-Hooks intercept Claude Code lifecycle events to inject context and enforce quality.
+## Current Hook Lifecycle
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           HOOK LIFECYCLE                                 │
-│                                                                          │
-│  Session Start ──► SessionStart hook ──► Inject workflow context        │
-│                                                                          │
-│  Task() called ──► PreToolUse:Task hook ──► Inject specs from JSONL     │
-│                                                                          │
-│  Agent stops ──► SubagentStop hook ──► Ralph Loop verification          │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+Session starts/clears/compacts
+  -> session-start.py injects workflow, task, git, and spec index context
+
+User submits a prompt
+  -> inject-workflow-state.py injects the active task breadcrumb
+
+Task/Agent tool is called
+  -> inject-subagent-context.py injects JSONL context from the current task
+
+Status line refreshes
+  -> statusline.py displays compact Trellis state
 ```
 
 ---
 
 ## Configuration
 
-### `.claude/settings.json`
+Claude Code stores hook configuration in `.claude/settings.json`.
+
+Typical current entries:
 
 ```json
 {
+  "statusLine": {
+    "type": "command",
+    "command": "python3 .claude/hooks/statusline.py"
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -36,7 +41,7 @@ Hooks intercept Claude Code lifecycle events to inject context and enforce quali
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.py\"",
+            "command": "python3 .claude/hooks/session-start.py",
             "timeout": 10
           }
         ]
@@ -48,20 +53,19 @@ Hooks intercept Claude Code lifecycle events to inject context and enforce quali
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/inject-subagent-context.py\"",
+            "command": "python3 .claude/hooks/inject-subagent-context.py",
             "timeout": 30
           }
         ]
       }
     ],
-    "SubagentStop": [
+    "UserPromptSubmit": [
       {
-        "matcher": "check",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/ralph-loop.py\"",
-            "timeout": 300
+            "command": "python3 .claude/hooks/inject-workflow-state.py",
+            "timeout": 5
           }
         ]
       }
@@ -72,169 +76,59 @@ Hooks intercept Claude Code lifecycle events to inject context and enforce quali
 
 ---
 
-## SessionStart Hook
+## Hook Scripts
 
-### Purpose
-
-Inject initial context when a Claude Code session starts.
-
-### Script: `session-start.py`
-
-**Injects:**
-- Developer identity from `.trellis/.developer`
-- Git status and recent commits
-- Current task (if `.trellis/.current-task` exists)
-- `workflow.md` content
-- All `spec/*/index.md` files
-- Start instructions
-
-**Output format:**
-```json
-{
-  "result": "continue",
-  "message": "# Session Context\n\n## Developer\ntaosu\n\n## Git Status\n..."
-}
-```
+| Script | Event | Purpose |
+|--------|-------|---------|
+| `session-start.py` | `SessionStart` | Loads session context, active task state, workflow index, and specs |
+| `inject-workflow-state.py` | `UserPromptSubmit` | Adds a compact active-task breadcrumb per prompt |
+| `inject-subagent-context.py` | `PreToolUse:Task` / `PreToolUse:Agent` | Loads `prd.md`, `info.md`, and JSONL context for sub-agents |
+| `statusline.py` | status line | Displays task/status context |
 
 ---
 
-## PreToolUse:Task Hook
+## JSONL Context Loading
 
-### Purpose
+`inject-subagent-context.py` reads `.trellis/.current-task`, then loads the JSONL matching the sub-agent:
 
-Inject relevant specs when a subagent is invoked.
+| Agent | JSONL file |
+|-------|------------|
+| `trellis-implement` / `implement` | `implement.jsonl` |
+| `trellis-check` / `check` | `check.jsonl` |
+| `trellis-research` / `research` | research-specific instructions and task context |
 
-### Script: `inject-subagent-context.py`
+Rows without a `file` field are seed rows and are skipped.
 
-**Trigger:** When `Task(subagent_type="...")` is called.
-
-**Flow:**
-1. Read `subagent_type` from tool input
-2. Find current task from `.trellis/.current-task`
-3. Load `{subagent_type}.jsonl` from task directory
-4. Read each file listed in JSONL
-5. Build augmented prompt with context
-6. Update `task.json` with current phase
-
-**Output format:**
-```json
-{
-  "result": "continue",
-  "updatedInput": {
-    "prompt": "# Implement Agent Task\n\n## Context\n...\n\n## Your Task\n..."
-  }
-}
-```
-
-### JSONL Format
+Example:
 
 ```jsonl
 {"file": ".trellis/spec/cli/backend/index.md", "reason": "Backend guidelines"}
-{"file": "src/services/auth.ts", "reason": "Existing pattern"}
-{"file": ".trellis/tasks/01-31-add-login/prd.md", "reason": "Requirements"}
+{"file": ".trellis/tasks/04-25-example/research/api.md", "reason": "API research"}
 ```
 
 ---
 
-## SubagentStop Hook
+## Historical Removed Hooks
 
-### Purpose
+Older Trellis docs described a `SubagentStop:check` Ralph Loop and `.claude/hooks/ralph-loop.py`. That mechanism is historical and removed from current templates. Validation now happens through check-agent instructions, explicit commands, CI, and PR handoff evidence.
 
-Quality enforcement via Ralph Loop.
-
-### Script: `ralph-loop.py`
-
-**Trigger:** When Check Agent tries to stop.
-
-**Flow:**
-1. Read verify commands from `worktree.yaml`
-2. Execute each command (pnpm lint, pnpm typecheck, etc.)
-3. If all pass → allow stop
-4. If any fail → block stop, agent continues
-
-→ See [ralph-loop.md](./ralph-loop.md) for details.
+See [ralph-loop.md](./ralph-loop.md) for the historical note.
 
 ---
 
-## Hook Scripts Location
-
-```
-.claude/hooks/
-├── session-start.py           # SessionStart handler
-├── inject-subagent-context.py # PreToolUse:Task handler
-└── ralph-loop.py              # SubagentStop:check handler
-```
-
----
-
-## Environment Variables
-
-Available in hook scripts:
-
-| Variable | Description |
-|----------|-------------|
-| `CLAUDE_PROJECT_DIR` | Project root directory |
-| `HOOK_EVENT` | Event type (SessionStart, PreToolUse, etc.) |
-| `TOOL_NAME` | Tool being called (for PreToolUse) |
-| `TOOL_INPUT` | JSON string of tool input |
-| `SUBAGENT_TYPE` | Agent type (for SubagentStop) |
-
----
-
-## Hook Response Format
-
-### Continue (allow operation)
-
-```json
-{
-  "result": "continue",
-  "message": "Optional message to inject"
-}
-```
-
-### Continue with modified input
-
-```json
-{
-  "result": "continue",
-  "updatedInput": {
-    "prompt": "Modified prompt..."
-  }
-}
-```
-
-### Block (prevent operation)
-
-```json
-{
-  "result": "block",
-  "message": "Reason for blocking"
-}
-```
-
----
-
-## Debugging Hooks
-
-### View hook output
+## Debugging
 
 ```bash
-# Check if hooks are configured
-cat .claude/settings.json | grep -A 20 '"hooks"'
-
-# Test session-start manually
 python3 .claude/hooks/session-start.py
-
-# Test inject-context (needs TOOL_INPUT env var)
-TOOL_INPUT='{"subagent_type":"implement","prompt":"test"}' \
-  python3 .claude/hooks/inject-subagent-context.py
+python3 .claude/hooks/inject-workflow-state.py
+echo '{"tool_input":{"subagent_type":"trellis-implement","prompt":"test"}}' | python3 .claude/hooks/inject-subagent-context.py
 ```
 
-### Common Issues
+Common issues:
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| Hook not running | Wrong matcher | Check settings.json matcher |
-| Timeout | Script too slow | Increase timeout or optimize |
-| No context injected | Missing .current-task | Run `task.py start` |
-| JSONL not found | Wrong task directory | Check .current-task path |
+| Issue | Check |
+|-------|-------|
+| No task context | `.trellis/.current-task` exists and points to a task |
+| Empty sub-agent context | JSONL has curated rows with `file` fields |
+| Hook not running | `.claude/settings.json` matcher and timeout |
+| Wrong Python command | Use the platform-selected Python command in templates |

@@ -582,6 +582,99 @@ Commands emitted by `resolveCommands(ctx)` / `resolveAllAsSkills(ctx)` in `src/c
 - Agent-capable: `claude-code, cursor, opencode, codex, kiro, gemini, qoder, codebuddy, copilot, droid, pi`
 - Agent-less: `kilo, antigravity, windsurf`
 
+---
+
+## Scenario: Parallel PR-First Orchestration
+
+### 1. Scope / Trigger
+
+Use this contract when a platform command or prompt orchestrates multiple development tasks in parallel. The user intent is "multiple workers on one project", so the default outcome must be multiple isolated task branches/worktrees and multiple draft PRs waiting for human review.
+
+Do not downgrade parallel work into planning-only or single-worker implementation just because several tasks touch shared scaffolding, shared error models, logging, or service interfaces. Shared contracts are coordination inputs, not a reason to refuse parallel execution.
+
+### 2. Signatures
+
+Parent task and child task setup:
+
+```bash
+python3 ./.trellis/scripts/task.py create "<parent title>" --slug <parent>
+python3 ./.trellis/scripts/task.py create "<child title>" --slug <child> --parent "$PARENT_TASK"
+python3 ./.trellis/scripts/task.py add-context "$CHILD_TASK" implement "<spec-or-research-path>" "<reason>"
+python3 ./.trellis/scripts/task.py add-context "$CHILD_TASK" check "<spec-or-research-path>" "<reason>"
+python3 ./.trellis/scripts/task.py validate "$CHILD_TASK"
+```
+
+Per-child work isolation and PR handoff:
+
+```bash
+python3 ./.trellis/scripts/task.py worktree "$CHILD_TASK" --base <integration-branch>
+python3 ./.trellis/scripts/task.py create-pr "$CHILD_TASK" --draft
+python3 ./.trellis/scripts/task.py sync-pr "$CHILD_TASK"
+python3 ./.trellis/scripts/task.py review-pr "$CHILD_TASK"
+python3 ./.trellis/scripts/task.py finish-pr "$CHILD_TASK"
+```
+
+### 3. Contracts
+
+| Contract | Required behavior |
+|---|---|
+| Parent task | Captures the overall goal, shared contracts, dependency order, and child task list |
+| Child task | Owns one branch/worktree and one reviewable PR |
+| Parallelism | Dispatch independent child workers concurrently whenever write ownership can be separated |
+| Shared scaffolding | Record the shared API/error/logging contract first, then assign ownership; use a prerequisite scaffold child only when unavoidable |
+| Branch/worktree | Each child gets a distinct branch and worktree before code writing begins |
+| PR handoff | Each worker commits, pushes when configured, creates/stages a draft PR, syncs PR body, writes review artifact, and marks ready for human review when gates allow |
+| Local fallback | If `gh` or auth is unavailable, create local PR body/review artifacts and leave task metadata in a clear local/draft state |
+| Platform parity | Claude, OpenCode, Copilot, and any future parallel prompt must express the same lifecycle even if command syntax differs |
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected behavior |
+|---|---|
+| User asks for parallel implementation | Orchestrator creates parent/child task plan and dispatches multiple workers when ownership allows |
+| Two children both need shared interface changes | Orchestrator records the shared contract and assigns one owner, or creates a scaffold child that other children depend on |
+| Child created with `--parent` | Do not also call `add-subtask`; `create --parent` already links the child |
+| Worker finishes code | Worker runs check, commits, and performs PR handoff commands for its own child task |
+| GitHub CLI missing | Workflow does not fail hard; worker leaves local PR body/review artifacts and manual next steps |
+| Template mentions removed multi-agent scripts | Regression; shipped prompts must not reference nonexistent `.trellis/scripts/multi_agent/*.py` |
+| Template mentions `task.py init-context` as orchestration guidance | Regression; only the intentional `task.py` deprecation guard may mention it |
+
+### 5. Good / Base / Bad Cases
+
+- Good: A four-part backend feature becomes one parent task plus four child tasks, each with explicit write ownership, isolated worktree, and draft PR. A shared DTO or error contract is documented once and owned by one child or a scaffold prerequisite.
+- Base: A small task remains single-worker and uses the normal PR-first finish flow.
+- Bad: The orchestrator says "true parallel coding would conflict" and only starts one implementation worker while other workers prepare context. This violates the multi-worker contract.
+
+### 6. Tests Required
+
+| Test | Required assertions |
+|---|---|
+| Parallel prompt regression | Claude/OpenCode/Copilot prompts require child tasks, separate branches/worktrees, concurrent workers, and one draft PR per child |
+| PR handoff regression | Prompts include `create-pr --draft`, `sync-pr`, `review-pr`, and `finish-pr` or equivalent explicit steps |
+| Removed-script regression | Shipped templates do not reference removed `multi_agent` scripts or `init-context` orchestration commands |
+| Parent-link regression | Prompt examples do not call `add-subtask` after `create --parent` |
+| Template parity | Live prompt files and installable template files carry equivalent parallel PR-first requirements |
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```markdown
+True parallel coding may conflict on shared scaffolding. Start one implementer first; let the other tasks only plan context.
+```
+
+This turns a multi-worker request into a serialized implementation and prevents independent PR review.
+
+#### Correct
+
+```markdown
+Create a parent task, define shared contracts, create child tasks with `--parent`,
+assign write ownership, create separate worktrees, dispatch workers concurrently,
+and require each worker to finish with draft PR handoff commands.
+```
+
+The coordination layer manages conflicts; it does not remove parallelism as the default.
+
 ## Subagent Context Injection: Hook-based vs Pull-based vs Extension-backed
 
 Trellis sub-agents (implement / check / research) need task context (`prd.md` + spec files listed in `implement.jsonl` / `check.jsonl`) at startup. There are two delivery modes depending on the platform's hook capabilities:

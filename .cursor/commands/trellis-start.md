@@ -250,20 +250,16 @@ Use this output format:
 
 **Step 6: Configure Context** `[AI]`
 
-Initialize default context:
-
-```bash
-python3 ./.trellis/scripts/task.py init-context "$TASK_DIR" <type>
-# type: backend | frontend | fullstack
-```
-
-Add specs found in your research pass:
+`implement.jsonl` and `check.jsonl` are seeded by `task.py create`. Curate real context entries from the specs and research found in your research pass:
 
 ```bash
 # For each relevant spec and code pattern:
 python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" implement "<path>" "<reason>"
 python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" check "<path>" "<reason>"
+python3 ./.trellis/scripts/task.py validate "$TASK_DIR"
 ```
+
+Skip seed rows without a `file` field. Do not run the removed context initializer.
 
 **Step 7: Activate Task** `[AI]`
 

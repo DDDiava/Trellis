@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { getCommandTemplates } from "../../src/templates/common/index.js";
+import { getAllPrompts } from "../../src/templates/copilot/index.js";
 import {
   commonTaskPr,
   commonTaskStore,
@@ -29,11 +30,37 @@ interface CommandResult {
   commands?: string[][];
 }
 
+interface TextFile {
+  relativePath: string;
+  content: string;
+}
+
 function repoRoot(): string {
   return path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "../../../..",
   );
+}
+
+function collectMarkdownFiles(root: string): TextFile[] {
+  const files: TextFile[] = [];
+
+  function walk(dir: string): void {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.name.endsWith(".md")) {
+        files.push({
+          relativePath: path.relative(root, fullPath).replace(/\\/g, "/"),
+          content: fs.readFileSync(fullPath, "utf-8"),
+        });
+      }
+    }
+  }
+
+  walk(root);
+  return files;
 }
 
 function writeTrellisScripts(root: string): void {
@@ -399,5 +426,102 @@ describe("PR-first workflow templates", () => {
     expect(ci).toContain("run: pnpm typecheck");
     expect(ci).toContain("run: pnpm test");
     expect(ci).toContain("run: pnpm build");
+  });
+
+  it("documents parallel child-task PR handoff and avoids removed pipeline scripts", () => {
+    expect(workflowMdTemplate).toContain("Parallel work means parallel PRs");
+    expect(workflowMdTemplate).toContain("parent task plus child tasks");
+    expect(workflowMdTemplate).toContain("distinct branch/worktree");
+    expect(workflowMdTemplate).toContain("ownership/dependency plan");
+    expect(workflowMdTemplate).toContain("git commit -m");
+    expect(workflowMdTemplate).toContain("task.py create-pr <task-name> --draft");
+    expect(workflowMdTemplate).toContain("task.py finish-pr <task-name>");
+
+    const parallelPrompt = getAllPrompts().find(
+      (prompt) => prompt.name === "parallel",
+    );
+    const parallelContent = parallelPrompt?.content ?? "";
+
+    expect(parallelContent).toContain(
+      "one child task per independently reviewable work item",
+    );
+    expect(parallelContent).toContain(
+      'task.py create "<child goal>" --slug <child-task> --parent <parent-task>',
+    );
+    expect(parallelContent).not.toContain(
+      "task.py add-subtask <parent-task> <child-task>",
+    );
+    expect(parallelContent).toContain("ownership/dependency plan");
+    expect(parallelContent).toContain("task.py worktree <child-task>");
+    expect(parallelContent).toContain("git commit -m");
+    expect(parallelContent).toContain("git push -u origin task/<child-task>");
+    expect(parallelContent).toContain("task.py create-pr <child-task> --draft");
+    expect(parallelContent).toContain("task.py sync-pr <child-task>");
+    expect(parallelContent).toContain("task.py review-pr <child-task>");
+    expect(parallelContent).toContain("task.py finish-pr <child-task>");
+    expect(parallelContent).toContain("pr-body.md");
+    expect(parallelContent).toContain("review/pr-review-*.md");
+    expect(parallelContent).not.toContain("task.py init-context");
+    expect(parallelContent).not.toContain("multi_agent");
+
+    expect(
+      fs.existsSync(
+        path.join(
+          repoRoot(),
+          "packages/cli/src/templates/markdown/worktree.yaml.txt",
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps local trellis-meta docs on removed-script references only as historical notes", () => {
+    const root = repoRoot();
+    const staleReferencePattern =
+      /\.trellis\/scripts\/multi_agent|multi_agent\/(?:plan|start|status|create_pr|cleanup)\.py|task\.py init-context|common\/(?:registry|worktree)\.py|worktree\.yaml/;
+    const historicalContextPattern =
+      /historical|removed|no longer|not active|do not|does not use|replacement|current replacement/;
+    const violations: string[] = [];
+
+    for (const metaDir of [
+      ".agents/skills/trellis-meta",
+      ".claude/skills/trellis-meta",
+    ]) {
+      for (const file of collectMarkdownFiles(path.join(root, metaDir))) {
+        const lines = file.content.split(/\r?\n/);
+        lines.forEach((line, index) => {
+          if (!staleReferencePattern.test(line)) {
+            return;
+          }
+          const context = lines
+            .slice(Math.max(0, index - 12), Math.min(lines.length, index + 3))
+            .join("\n")
+            .toLowerCase();
+          if (!historicalContextPattern.test(context)) {
+            violations.push(`${metaDir}/${file.relativePath}:${index + 1}`);
+          }
+        });
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps shipped start templates on the curated-context flow", () => {
+    const copilotStart = getAllPrompts().find(
+      (prompt) => prompt.name === "start",
+    );
+    const codexStart = fs.readFileSync(
+      path.join(
+        repoRoot(),
+        "packages/cli/src/templates/codex/skills/start/SKILL.md",
+      ),
+      "utf-8",
+    );
+
+    for (const content of [copilotStart?.content ?? "", codexStart]) {
+      expect(content).toContain('Skip seed rows without a `file` field');
+      expect(content).toContain('task.py validate "$TASK_DIR"');
+      expect(content).not.toContain("task.py init-context");
+    }
   });
 });

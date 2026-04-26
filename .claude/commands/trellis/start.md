@@ -261,20 +261,16 @@ Task(
 
 **Step 6: Configure Context** `[AI]`
 
-Initialize default context:
-
-```bash
-python3 ./.trellis/scripts/task.py init-context "$TASK_DIR" <type>
-# type: backend | frontend | fullstack
-```
-
-Add code-spec files found by Research Agent:
+`implement.jsonl` and `check.jsonl` are seeded by `task.py create`. Curate real context entries from the code-spec files and research found by the Research Agent:
 
 ```bash
 # For each relevant code-spec and code pattern:
 python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" implement "<path>" "<reason>"
 python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" check "<path>" "<reason>"
+python3 ./.trellis/scripts/task.py validate "$TASK_DIR"
 ```
+
+Skip seed rows without a `file` field. Do not run the removed context initializer.
 
 **Step 7: Activate Task** `[AI]`
 
@@ -359,8 +355,8 @@ If yes, resume from the appropriate step (usually Step 7 or 8).
 |--------|---------|
 | `python3 ./.trellis/scripts/get_context.py` | Get session context |
 | `python3 ./.trellis/scripts/task.py create` | Create task directory |
-| `python3 ./.trellis/scripts/task.py init-context` | Initialize jsonl files |
 | `python3 ./.trellis/scripts/task.py add-context` | Add code-spec/context file to jsonl |
+| `python3 ./.trellis/scripts/task.py validate` | Validate curated jsonl entries |
 | `python3 ./.trellis/scripts/task.py start` | Set current task |
 | `python3 ./.trellis/scripts/task.py finish` | Clear current task |
 | `python3 ./.trellis/scripts/task.py archive` | Archive completed task |

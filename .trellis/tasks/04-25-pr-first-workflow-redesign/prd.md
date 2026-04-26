@@ -23,6 +23,10 @@ Adopt the PR-first Trellis workflow described in `D:/Google_download/trellis-pr-
 - Update `.github/workflows/ci.yml` so pull requests targeting `feat/v0.5.0-beta` run CI, using actual package scripts.
 - Add `.github/release.yml` if it stays low-risk and useful for release-note categorization.
 - Add/update tests for metadata compatibility, command availability, dry-run behavior, generated PR body, managed-section replacement, finish-work text, and CI/template coverage.
+- Treat parallel development as first-class multi-worker development: when the user asks to run multiple tasks in parallel, Trellis should create/prepare separate child tasks with distinct branches/worktrees and reviewable PRs, not refuse or silently serialize implementation because shared files might conflict.
+- Replace "shared scaffold conflict means only one implementation agent can run" guidance with an ownership-and-contract strategy: define shared contracts explicitly, assign disjoint write scopes where possible, and use a prerequisite scaffold task only when unavoidable. The default outcome should still be multiple independent task branches/PRs for user review.
+- Ensure parallel task execution instructs each worker/subagent to perform real PR handoff steps after implementation and check: commit changes in its task branch/worktree, push the branch when configured, run `task.py create-pr --draft`, then `sync-pr`, `review-pr`, and `finish-pr` or leave clear local fallback artifacts when GitHub CLI/auth is unavailable.
+- Update stale parallel/orchestrator templates so they do not reference removed commands such as `task.py init-context` or missing `multi_agent/*.py` scripts unless those scripts are restored.
 
 ## Acceptance Criteria
 
@@ -38,6 +42,10 @@ Adopt the PR-first Trellis workflow described in `D:/Google_download/trellis-pr-
 - [ ] `/finish-work` template no longer treats "review and commit" as the main finish action and does not archive before merge by default.
 - [ ] `.trellis` dogfood scripts and package templates remain behaviorally synchronized.
 - [ ] CI includes PRs targeting `feat/v0.5.0-beta`.
+- [ ] Parallel orchestration docs/prompts explicitly allow multiple implementation workers to run concurrently in separate task branches/worktrees and require separate draft PRs for each task.
+- [ ] When shared scaffolding/contracts are needed, prompts require the orchestrator to record a dependency/ownership plan instead of refusing parallel work outright.
+- [ ] Parallel worker/subagent instructions include concrete PR handoff commands and expected metadata/artifacts, so completed parallel tasks wait for human PR review rather than stopping at local implementation.
+- [ ] No shipped template references removed `init-context` or nonexistent `multi_agent` scripts unless the implementation restores those scripts.
 - [ ] Available validation runs pass, or any skipped check is explained honestly.
 
 ## Definition of Done
@@ -58,6 +66,7 @@ Implement the MVP in small internal slices:
 4. Update workflow and finish-work templates.
 5. Add GitHub template/release files and CI beta branch trigger.
 6. Validate with TypeScript tests plus targeted Python smoke commands where practical.
+7. Revise parallel/orchestrator contracts so multi-task requests map to child tasks, isolated branches/worktrees, and one draft PR per task.
 
 ## Decision (ADR-lite)
 

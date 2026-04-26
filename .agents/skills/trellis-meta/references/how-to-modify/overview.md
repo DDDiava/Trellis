@@ -1,6 +1,6 @@
 # How-To Modification Guide
 
-Common Trellis customization scenarios and what files need to be modified.
+Common Trellis customization scenarios and the files they touch.
 
 ---
 
@@ -8,216 +8,90 @@ Common Trellis customization scenarios and what files need to be modified.
 
 | Task | Files to Modify | Platform |
 |------|-----------------|----------|
-| [Add slash command](#add-slash-command) | commands/, trellis-local | All |
-| [Add agent](#add-agent) | agents/, hook, jsonl, trellis-local | CC |
-| [Modify hook](#modify-hook) | hooks/, settings.json, trellis-local | CC |
-| [Add spec category](#add-spec-category) | spec/, jsonl, trellis-local | All |
-| [Change verify commands](#change-verify-commands) | worktree.yaml | CC |
-| [Add workflow phase](#add-workflow-phase) | task.json, dispatch, trellis-local | CC |
-| [Add post_create step](#add-post_create-step) | worktree.yaml | CC |
-| [Modify session start](#modify-session-start) | session-start.py, trellis-local | CC |
-| [Add core script](#add-core-script) | scripts/, trellis-local | All |
-| [Change task types](#change-task-types) | task.py, jsonl templates | All |
+| Add slash command | platform commands + `trellis-local` | All |
+| Add agent | platform agents, hook/prelude, JSONL, `trellis-local` | Agent-capable |
+| Modify hook | hook file, settings, `trellis-local` | Hook-capable |
+| Add spec category | `.trellis/spec/`, task JSONL, `trellis-local` | All |
+| Change validation commands | workflow/agent/check docs, CI, `trellis-local` | All |
+| Add workflow phase guidance | `.trellis/workflow.md`, command/skill prompts, `trellis-local` | All |
+| Add setup step for worktrees | child task `info.md` or repo setup scripts | All |
+| Add core script | `.trellis/scripts/` and template copy | All |
+| Change task metadata | task writers/readers/tests/spec docs | All |
 
-**Platform**: `All` = All platforms | `CC` = Claude Code only
-
----
-
-## Detailed Guides
-
-### Add Slash Command
-
-**Scenario**: Add a new `/trellis:my-command` command.
-
-**Files to modify**:
-
-```
-.claude/commands/trellis/my-command.md    # Create: Command prompt
-.cursor/commands/my-command.md            # Create: Mirror for Cursor (optional)
-.trellis-local/SKILL.md                   # Update: Document the change
-```
-
-**Steps**:
-1. Create command file with YAML frontmatter
-2. Mirror to Cursor if needed
-3. Document in trellis-local
-
-→ See `add-command.md` for details.
+`worktree.yaml` and `task.py init-context` are removed. Do not use them for new customization guidance.
 
 ---
 
-### Add Agent
+## Add Slash Command
 
-**Scenario**: Add a new agent type like `my-agent`.
+Create or modify the platform command templates, then document the change in `trellis-local`.
 
-**Files to modify**:
-
-```
-.claude/agents/my-agent.md                          # Create: Agent definition
-.claude/hooks/inject-subagent-context.py            # Modify: Add agent handling
-.trellis/tasks/{template}/my-agent.jsonl            # Create: Context template
-.trellis-local/SKILL.md                             # Update: Document the change
-```
-
-**Optional**:
-```
-.claude/agents/dispatch.md                          # Modify: If adding to pipeline
-task.json template                                  # Modify: Add to next_action
-```
-
-→ See `add-agent.md` for details.
-
----
-
-### Modify Hook
-
-**Scenario**: Change hook behavior (context injection, validation, etc.).
-
-**Files to modify**:
+Examples:
 
 ```
-.claude/hooks/{hook-name}.py              # Modify: Hook logic
-.claude/settings.json                     # Modify: If changing matcher/timeout
-.trellis-local/SKILL.md                   # Update: Document the change
-```
-
-→ See `modify-hook.md` for details.
-
----
-
-### Add Spec Category
-
-**Scenario**: Add a new spec category like `mobile/`.
-
-**Files to modify**:
-
-```
-.trellis/spec/mobile/index.md             # Create: Category index
-.trellis/spec/mobile/*.md                 # Create: Spec files
-.trellis/tasks/{template}/*.jsonl         # Update: Reference new specs
-.trellis-local/SKILL.md                   # Update: Document the change
-```
-
-→ See `add-spec.md` for details.
-
----
-
-### Change Verify Commands
-
-**Scenario**: Add or modify Ralph Loop verification commands.
-
-**Files to modify**:
-
-```
-.trellis/worktree.yaml                    # Modify: verify section
-```
-
-**Example**:
-```yaml
-verify:
-  - pnpm lint
-  - pnpm typecheck
-  - pnpm test        # Add this
-```
-
-→ See `change-verify.md` for details.
-
----
-
-### Add Workflow Phase
-
-**Scenario**: Add a new phase to the task workflow.
-
-**Files to modify**:
-
-```
-task.json (in task directories)           # Modify: next_action array
-.claude/agents/dispatch.md                # Modify: Handle new phase
-.claude/agents/{new-phase}.md             # Create: If new agent needed
-.claude/hooks/inject-subagent-context.py  # Modify: If new agent
-.trellis-local/SKILL.md                   # Update: Document the change
-```
-
-→ See `add-phase.md` for details.
-
----
-
-### Add post_create Step
-
-**Scenario**: Add setup steps after worktree creation.
-
-**Files to modify**:
-
-```
-.trellis/worktree.yaml                    # Modify: post_create section
-```
-
-**Example**:
-```yaml
-post_create:
-  - pnpm install
-  - pnpm db:migrate    # Add this
+.claude/commands/trellis/my-command.md
+.cursor/commands/trellis-my-command.md
+.opencode/commands/trellis/my-command.md
+packages/cli/src/templates/common/commands/my-command.md
 ```
 
 ---
 
-### Modify Session Start
+## Add Agent
 
-**Scenario**: Change what context is injected at session start.
+Create the platform agent definition, add hook/prelude loading if needed, create a JSONL manifest for the new context, and document in `trellis-local`.
 
-**Files to modify**:
-
-```
-.claude/hooks/session-start.py            # Modify: Injection logic
-.trellis-local/SKILL.md                   # Update: Document the change
-```
-
-→ See `modify-session-start.md` for details.
+See `add-agent.md`.
 
 ---
 
-### Add Core Script
+## Modify Hook
 
-**Scenario**: Add a new automation script.
+Edit the hook implementation and platform settings if the event or timeout changes.
 
-**Files to modify**:
-
-```
-.trellis/scripts/my-script.py             # Create: Script
-.trellis/scripts/common/*.py              # Create/Modify: If shared utilities
-.trellis-local/SKILL.md                   # Update: Document the change
-```
-
-→ See `add-script.md` for details.
+See `modify-hook.md`.
 
 ---
 
-### Change Task Types
+## Add Spec Category
 
-**Scenario**: Add or modify task dev_type (frontend, backend, etc.).
+Create the spec files and add them to task JSONL manifests through Phase 1.3 curation or `task.py add-context`.
 
-**Files to modify**:
-
-```
-.trellis/scripts/task.py                  # Modify: init-context logic
-.trellis/tasks/{template}/*.jsonl         # Create: New JSONL templates
-.trellis-local/SKILL.md                   # Update: Document the change
-```
-
-→ See `change-task-types.md` for details.
+See `add-spec.md`.
 
 ---
 
-## Documents in This Directory
+## Change Validation Commands
 
-| Document | Scenario |
-|----------|----------|
-| `add-command.md` | Adding slash commands |
-| `add-agent.md` | Adding new agent types |
-| `modify-hook.md` | Modifying hook behavior |
-| `add-spec.md` | Adding spec categories |
-| `change-verify.md` | Changing verify commands |
-| `add-phase.md` | Adding workflow phases |
-| `modify-session-start.md` | Changing session start injection |
-| `add-script.md` | Adding automation scripts |
-| `change-task-types.md` | Adding task types |
+Current validation lives in:
+
+- agent instructions
+- `.trellis/workflow.md`
+- CI workflows
+- project scripts such as `package.json`
+- task/PR validation evidence
+
+Do not add a `verify:` block to `.trellis/worktree.yaml`; that config is historical.
+
+---
+
+## Add Setup Step for Worktrees
+
+Current `task.py worktree` does not read `post_create` config. Put setup steps in:
+
+- child task `info.md`
+- the parent ownership/dependency plan
+- repo scripts such as `scripts/setup-dev`
+- worker instructions in the parallel prompt
+
+---
+
+## Add Core Script
+
+When adding files under `.trellis/scripts/`, also update the installable template copy under `packages/cli/src/templates/trellis/scripts/` and register new template files through `packages/cli/src/templates/trellis/index.ts`.
+
+---
+
+## Historical Removed Guidance
+
+If an old guide says to modify `worktree.yaml`, `task.py init-context`, `common/registry.py`, `common/worktree.py`, or `.trellis/scripts/multi_agent/*.py`, treat it as historical unless the repository restored that implementation.

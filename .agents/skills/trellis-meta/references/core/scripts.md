@@ -4,270 +4,133 @@ Platform-independent Python scripts for Trellis automation.
 
 ---
 
-## Overview
-
-These scripts work on all platforms - they only read/write files and don't require Claude Code's hook system.
+## Script Tree
 
 ```
 .trellis/scripts/
-├── common/                 # Shared utilities
-│   ├── paths.py
-│   ├── developer.py
-│   ├── task_utils.py
-│   ├── phase.py
-│   └── git_context.py
-│
-├── init_developer.py       # Initialize developer
-├── get_developer.py        # Get developer name
-├── get_context.py          # Get session context
-├── task.py                 # Task management CLI
-└── add_session.py          # Record session
+├── add_session.py
+├── get_context.py
+├── get_developer.py
+├── init_developer.py
+├── task.py
+└── common/
+    ├── cli_adapter.py
+    ├── config.py
+    ├── developer.py
+    ├── git.py
+    ├── io.py
+    ├── log.py
+    ├── packages_context.py
+    ├── paths.py
+    ├── session_context.py
+    ├── task_context.py
+    ├── task_pr.py
+    ├── task_queue.py
+    ├── task_store.py
+    ├── task_utils.py
+    ├── tasks.py
+    ├── types.py
+    └── workflow_phase.py
 ```
 
 ---
 
 ## Developer Scripts
 
-### `init_developer.py`
-
-Initialize developer identity.
-
 ```bash
-python3 .trellis/scripts/init_developer.py <name>
-```
-
-**Creates:**
-- `.trellis/.developer`
-- `.trellis/workspace/<name>/`
-- `.trellis/workspace/<name>/index.md`
-- `.trellis/workspace/<name>/journal-1.md`
-
----
-
-### `get_developer.py`
-
-Get current developer name.
-
-```bash
-python3 .trellis/scripts/get_developer.py
-# Output: taosu
-```
-
-**Exit codes:**
-- `0` - Success
-- `1` - Not initialized
-
----
-
-## Context Scripts
-
-### `get_context.py`
-
-Get session context for AI consumption.
-
-```bash
-python3 .trellis/scripts/get_context.py
-```
-
-**Output includes:**
-- Developer identity
-- Git status and recent commits
-- Current task (if any)
-- Workspace summary
-
----
-
-### `add_session.py`
-
-Record session entry to journal.
-
-```bash
-python3 .trellis/scripts/add_session.py "Session summary"
-```
-
-**Actions:**
-1. Appends to current journal
-2. Updates index markers
-3. Rotates journal if needed
-
----
-
-## Task Scripts
-
-### `task.py`
-
-Task management CLI.
-
-#### Create Task
-
-```bash
-python3 .trellis/scripts/task.py create "Task name" --slug task-slug
-```
-
-**Options:**
-- `--slug` - URL-safe identifier
-- `--assignee` - Developer name (default: current)
-- `--type` - Dev type: frontend, backend, fullstack
-
-#### List Tasks
-
-```bash
-python3 .trellis/scripts/task.py list
-```
-
-**Output:**
-```
-Active Tasks:
-  01-31-add-login-taosu (active)
-  01-30-fix-api-cursor-agent (paused)
-```
-
-#### Start Task
-
-```bash
-python3 .trellis/scripts/task.py start <task-dir>
-```
-
-Sets `.trellis/.current-task` to the task directory.
-
-#### Stop Task
-
-```bash
-python3 .trellis/scripts/task.py stop
-```
-
-Clears `.trellis/.current-task`.
-
-#### Initialize Context
-
-```bash
-python3 .trellis/scripts/task.py init-context <task-dir> <dev-type>
-```
-
-**Dev types:** `frontend`, `backend`, `fullstack`
-
-Creates JSONL files with appropriate spec references.
-
-#### Set Branch
-
-```bash
-python3 .trellis/scripts/task.py set-branch <task-dir> <branch-name>
-```
-
-Updates `branch` field in task.json.
-
-#### Archive Task
-
-```bash
-python3 .trellis/scripts/task.py archive <task-dir>
-```
-
-Moves task to `.trellis/tasks/archive/YYYY-MM/`.
-
-#### List Archive
-
-```bash
-python3 .trellis/scripts/task.py list-archive [month]
+python3 ./.trellis/scripts/init_developer.py <name>
+python3 ./.trellis/scripts/get_developer.py
+python3 ./.trellis/scripts/add_session.py "Session summary"
 ```
 
 ---
 
-## Common Utilities
+## Context Script
 
-### `common/paths.py`
-
-Path constants and utilities.
-
-```python
-from common.paths import (
-    TRELLIS_DIR,      # .trellis/
-    WORKSPACE_DIR,    # .trellis/workspace/
-    TASKS_DIR,        # .trellis/tasks/
-    SPEC_DIR,         # .trellis/spec/
-)
+```bash
+python3 ./.trellis/scripts/get_context.py
+python3 ./.trellis/scripts/get_context.py --mode packages
+python3 ./.trellis/scripts/get_context.py --mode phase --step 2.1
+python3 ./.trellis/scripts/get_context.py --json
 ```
 
-### `common/developer.py`
+`get_context.py` is the standard read path for session context, package/spec discovery, and phase guidance.
 
-Developer management.
+---
 
-```python
-from common.developer import (
-    get_developer,     # Get current developer name
-    get_workspace_dir, # Get developer's workspace directory
-)
+## Task Script
+
+### Task Lifecycle
+
+```bash
+python3 ./.trellis/scripts/task.py create "Task name" --slug task-slug
+python3 ./.trellis/scripts/task.py create "Child task" --slug child --parent <parent-task>
+python3 ./.trellis/scripts/task.py start <task>
+python3 ./.trellis/scripts/task.py finish
+python3 ./.trellis/scripts/task.py list
+python3 ./.trellis/scripts/task.py archive <task>
 ```
 
-### `common/task_utils.py`
+### Context JSONL
 
-Task lookup functions.
-
-```python
-from common.task_utils import (
-    get_current_task,  # Get current task directory
-    load_task_json,    # Load task.json
-    save_task_json,    # Save task.json
-)
+```bash
+python3 ./.trellis/scripts/task.py add-context <task> implement <path> "reason"
+python3 ./.trellis/scripts/task.py add-context <task> check <path> "reason"
+python3 ./.trellis/scripts/task.py validate <task>
+python3 ./.trellis/scripts/task.py list-context <task>
 ```
 
-### `common/phase.py`
+`task.py init-context` was removed. Phase 1.3 is now AI-curated: edit JSONL directly or use `add-context`.
 
-Phase tracking.
+### Branch, Worktree, and PR
 
-```python
-from common.phase import (
-    get_current_phase,  # Get current phase number
-    advance_phase,      # Move to next phase
-)
-```
-
-### `common/git_context.py`
-
-Git context generation.
-
-```python
-from common.git_context import (
-    get_git_status,     # Get git status
-    get_recent_commits, # Get recent commit messages
-    get_branch_name,    # Get current branch
-)
+```bash
+python3 ./.trellis/scripts/task.py set-branch <task> <branch>
+python3 ./.trellis/scripts/task.py set-base-branch <task> <branch>
+python3 ./.trellis/scripts/task.py set-scope <task> <scope>
+python3 ./.trellis/scripts/task.py worktree <task> --dry-run
+python3 ./.trellis/scripts/task.py worktree <task>
+python3 ./.trellis/scripts/task.py create-pr <task> --draft
+python3 ./.trellis/scripts/task.py sync-pr <task>
+python3 ./.trellis/scripts/task.py review-pr <task>
+python3 ./.trellis/scripts/task.py finish-pr <task>
 ```
 
 ---
 
-## Usage Examples
+## PR-First Helpers
 
-### Initialize New Developer
+`common/task_pr.py` owns:
 
-```bash
-cd /path/to/project
-python3 .trellis/scripts/init_developer.py john-doe
-```
+- worktree planning and metadata update
+- PR body generation
+- Trellis-managed PR body section replacement
+- GitHub CLI integration where available
+- local-only fallback artifacts
+- `sync-pr`, `review-pr`, and `finish-pr` behavior
 
-### Create and Start Task
+---
 
-```bash
-# Create task
-python3 .trellis/scripts/task.py create "Add user login" --slug add-login
+## Historical Removed Scripts
 
-# Initialize context for fullstack work
-python3 .trellis/scripts/task.py init-context \
-  .trellis/tasks/01-31-add-login-john-doe fullstack
+These names are removed and should only appear in migration notes:
 
-# Start task
-python3 .trellis/scripts/task.py start \
-  .trellis/tasks/01-31-add-login-john-doe
-```
+| Removed item | Replacement |
+|--------------|-------------|
+| `task.py init-context` | Phase 1.3 curated JSONL + `task.py add-context` |
+| `.trellis/scripts/multi_agent/*.py` | Parent/child tasks, `task.py worktree`, platform workers |
+| `common/registry.py` | Task metadata, git state, platform session UI |
+| `common/worktree.py` | `common/task_pr.py` |
+| `.trellis/worktree.yaml` | `task.py worktree` flags and task metadata |
 
-### Record Session
+---
 
-```bash
-python3 .trellis/scripts/add_session.py "Implemented login form, pending API integration"
-```
-
-### Archive Completed Task
+## Usage Example
 
 ```bash
-python3 .trellis/scripts/task.py archive \
-  .trellis/tasks/01-31-add-login-john-doe
+python3 ./.trellis/scripts/task.py create "Add login" --slug add-login
+python3 ./.trellis/scripts/task.py add-context add-login implement .trellis/spec/cli/backend/index.md "Backend guidelines"
+python3 ./.trellis/scripts/task.py start add-login
+python3 ./.trellis/scripts/task.py worktree add-login --dry-run
+python3 ./.trellis/scripts/task.py create-pr add-login --draft
 ```

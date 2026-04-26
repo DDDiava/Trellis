@@ -1,8 +1,6 @@
 # How To: Modify Hook
 
-Change hook behavior for context injection or validation.
-
-**Platform**: Claude Code only
+Change hook behavior for context injection, workflow breadcrumbs, or status display.
 
 ---
 
@@ -10,259 +8,88 @@ Change hook behavior for context injection or validation.
 
 | File | Action | Required |
 |------|--------|----------|
-| `.claude/hooks/{hook}.py` | Modify | Yes |
-| `.claude/settings.json` | Modify | If changing matcher/timeout |
-| `trellis-local/SKILL.md` | Update | Yes |
+| Platform hook script | Modify | Yes |
+| Platform settings | Modify if event/matcher/timeout changes | Maybe |
+| Shared hook template | Modify when change should ship to new projects | Maybe |
+| `trellis-local/SKILL.md` | Update for project-specific changes | Yes |
 
----
+Typical locations:
 
-## Hook Types
-
-| Hook | File | Purpose |
-|------|------|---------|
-| SessionStart | `session-start.py` | Inject initial context |
-| PreToolUse:Task | `inject-subagent-context.py` | Inject agent context |
-| SubagentStop:check | `ralph-loop.py` | Quality enforcement |
-
----
-
-## Step 1: Understand Hook Structure
-
-### Input (stdin)
-
-Hooks receive JSON input:
-
-```json
-{
-  "hook_event": "PreToolUse",
-  "tool_name": "Task",
-  "tool_input": {
-    "subagent_type": "implement",
-    "prompt": "..."
-  }
-}
+```
+.claude/hooks/
+packages/cli/src/templates/shared-hooks/
+packages/cli/src/templates/opencode/plugins/
+packages/cli/src/templates/codex/hooks/
 ```
 
-### Output (stdout)
+---
 
-Hooks output JSON:
+## Current Hook Types
 
-```json
-{
-  "result": "continue",
-  "message": "Optional message to inject",
-  "updatedInput": {
-    "prompt": "Modified prompt..."
-  }
-}
-```
+| Hook | Purpose |
+|------|---------|
+| `session-start.py` | Session boundary context |
+| `inject-workflow-state.py` | Per-prompt active task breadcrumb |
+| `inject-subagent-context.py` | Sub-agent JSONL context injection |
+| `statusline.py` | Compact status display |
 
-### Result Types
-
-| Result | Effect |
-|--------|--------|
-| `continue` | Allow operation, optionally modify |
-| `block` | Prevent operation |
+`ralph-loop.py` and `SubagentStop:check` are historical removed mechanisms.
 
 ---
 
-## Step 2: Modify Hook Logic
+## Step 1: Understand Input and Output
 
-### Example: Add Context to Session Start
+Hooks receive JSON from the platform, read Trellis files, and emit platform-specific JSON/text. Always preserve current output contract for that platform.
 
-Edit `.claude/hooks/session-start.py`:
+When editing shared hooks, verify every platform that consumes the hook template.
+
+---
+
+## Step 2: Modify Logic
+
+Example: add a file to session context:
 
 ```python
-def get_additional_context():
-    """Add custom context."""
-    context = []
-
-    # Add custom file
-    custom_path = os.path.join(repo_root, ".trellis/custom.md")
-    if os.path.exists(custom_path):
-        with open(custom_path) as f:
-            context.append(f"## Custom Context\n{f.read()}")
-
-    return "\n".join(context)
-
-# In main():
-additional = get_additional_context()
-message = f"{existing_message}\n\n{additional}"
+extra = repo_root / ".trellis" / "custom-context.md"
+if extra.is_file():
+    parts.append(extra.read_text(encoding="utf-8"))
 ```
 
-### Example: Add Agent Validation
-
-Edit `.claude/hooks/inject-subagent-context.py`:
+Example: add a guard to sub-agent context:
 
 ```python
-def validate_agent_input(subagent_type, prompt):
-    """Validate agent invocation."""
-    if subagent_type == "implement":
-        if "git commit" in prompt.lower():
-            return False, "Implement agent cannot commit"
-    return True, None
-
-# In main():
-valid, error = validate_agent_input(subagent_type, prompt)
-if not valid:
-    output = {"result": "block", "message": error}
-    print(json.dumps(output))
-    return
-```
-
-### Example: Add Verify Command
-
-Edit `.claude/hooks/ralph-loop.py`:
-
-```python
-# Add to verify commands list
-ADDITIONAL_COMMANDS = ["pnpm test:unit"]
-
-def get_verify_commands():
-    commands = read_worktree_yaml_verify()
-    commands.extend(ADDITIONAL_COMMANDS)
-    return commands
+if subagent_type == "trellis-implement" and "git commit" in prompt.lower():
+    return block("Implement agents must not commit.")
 ```
 
 ---
 
-## Step 3: Modify Settings (If Needed)
+## Step 3: Update Settings If Needed
 
-Edit `.claude/settings.json`:
-
-### Change Timeout
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ...",
-            "timeout": 60  // Increase from 30
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### Change Matcher
-
-```json
-{
-  "hooks": {
-    "SubagentStop": [
-      {
-        "matcher": "check|my-agent",  // Add new agent
-        "hooks": [...]
-      }
-    ]
-  }
-}
-```
+If matcher, event, timeout, or command path changes, update the platform settings template and the dogfood copy.
 
 ---
 
-## Step 4: Document in trellis-local
+## Step 4: Document and Test
 
-Update `.claude/skills/trellis-local/SKILL.md`:
+Document in `trellis-local`:
 
-```markdown
-## Hooks Changed
+- hook file
+- event/matcher
+- behavior change
+- reason
+- validation
 
-#### session-start.py
-- **Hook Event**: SessionStart
-- **Change**: Added custom context injection
-- **Lines modified**: 45-60
-- **Date**: 2026-01-31
-- **Reason**: Need to inject project-specific context
-
-#### inject-subagent-context.py
-- **Hook Event**: PreToolUse:Task
-- **Change**: Added validation for implement agent
-- **Lines modified**: 120-135
-- **Date**: 2026-01-31
-- **Reason**: Prevent accidental git commits
-```
-
----
-
-## Testing
-
-### Manual Test
+Manual checks:
 
 ```bash
-# Test session-start
 python3 .claude/hooks/session-start.py
-
-# Test inject-subagent-context
-echo '{"tool_input":{"subagent_type":"implement","prompt":"test"}}' | \
-  python3 .claude/hooks/inject-subagent-context.py
-
-# Test ralph-loop
-echo '{"subagent_type":"check","output":"test"}' | \
-  python3 .claude/hooks/ralph-loop.py
-```
-
-### Integration Test
-
-1. Start new Claude Code session
-2. Verify session-start output
-3. Invoke subagent
-4. Verify context injection
-5. Verify Ralph Loop (for check agent)
-
----
-
-## Common Modifications
-
-### Add File to Session Context
-
-```python
-# session-start.py
-files_to_inject = [
-    ".trellis/workflow.md",
-    ".trellis/custom-context.md",  # Add this
-]
-```
-
-### Skip Injection for Certain Agents
-
-```python
-# inject-subagent-context.py
-SKIP_INJECTION = ["research"]
-
-if subagent_type in SKIP_INJECTION:
-    print(json.dumps({"result": "continue"}))
-    return
-```
-
-### Add Custom Verification
-
-```python
-# ralph-loop.py
-def custom_check():
-    """Custom verification logic."""
-    # Check something
-    return True, None
-
-# In verify():
-ok, error = custom_check()
-if not ok:
-    return False, error
+python3 .claude/hooks/inject-workflow-state.py
+echo '{"tool_input":{"subagent_type":"trellis-implement","prompt":"test"}}' | python3 .claude/hooks/inject-subagent-context.py
 ```
 
 ---
 
-## Checklist
+## Historical Note
 
-- [ ] Hook logic modified
-- [ ] Settings updated (if needed)
-- [ ] Manual test passed
-- [ ] Integration test passed
-- [ ] Documented in trellis-local
+Do not add validation by restoring `ralph-loop.py`, `SubagentStop:check`, or `worktree.yaml` verification. Current validation belongs in check-agent instructions, explicit commands, CI, and PR handoff.

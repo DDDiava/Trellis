@@ -1,72 +1,57 @@
 # Claude Code Features Overview
 
-These features require **Claude Code** and don't work on Cursor or other platforms.
+Claude Code support is one platform integration for the current Trellis workflow. It provides commands, agents, and hooks, while PR-first task state remains in `.trellis/` and is shared across platforms.
 
 ---
 
-## Why Claude Code Only?
+## Current Features
 
-Claude Code provides unique capabilities:
+| Feature | Purpose |
+|---------|---------|
+| Commands | User-facing `/trellis:*` prompts |
+| Agents | `trellis-research`, `trellis-implement`, `trellis-check` |
+| SessionStart hook | Inject workflow and task context at session boundaries |
+| UserPromptSubmit hook | Inject current workflow breadcrumb per user prompt |
+| PreToolUse hook | Inject task JSONL context into sub-agents |
+| Status line | Show Trellis task/status information |
+| PR-first commands | Shared `task.py` branch/worktree and PR handoff |
 
-| Feature | Claude Code | Why Required |
-|---------|-------------|--------------|
-| Hooks | ✅ | Hook system for lifecycle events |
-| Task tool | ✅ | Subagent invocation with context |
-| `--agent` flag | ✅ | Load agent definitions |
-| `--resume` | ✅ | Session persistence |
-| CLI scripting | ✅ | Automation with `claude` command |
+Claude Code no longer depends on a `SubagentStop` Ralph Loop, `worktree.yaml`, or the removed `multi_agent/` scripts.
 
 ---
 
 ## Feature Categories
 
-### Hooks System
-Automatic context injection and quality enforcement.
+### Hooks
 
-| Hook | When | Purpose |
-|------|------|---------|
-| `SessionStart` | Session begins | Inject workflow context |
-| `PreToolUse:Task` | Before subagent | Inject specs via JSONL |
-| `SubagentStop:check` | Check agent stops | Ralph Loop enforcement |
+Hooks keep context current:
 
-→ See [hooks.md](./hooks.md)
+- `session-start.py`
+- `inject-workflow-state.py`
+- `inject-subagent-context.py`
+- `statusline.py`
 
-### Agent System
-Specialized agents for different development phases.
+See [hooks.md](./hooks.md).
 
-| Agent | Purpose |
-|-------|---------|
-| `dispatch` | Orchestrate pipeline |
-| `implement` | Write code |
-| `check` | Review and self-fix |
-| `debug` | Fix issues |
-| `research` | Find patterns |
-| `plan` | Evaluate requirements |
+### Agents
 
-→ See [agents.md](./agents.md)
+Agents handle focused phases:
 
-### Ralph Loop
-Quality enforcement for Check Agent.
+- `trellis-research` persists research artifacts under the current task.
+- `trellis-implement` writes code using `implement.jsonl`, `prd.md`, and `info.md`.
+- `trellis-check` reviews/fixes changes using `check.jsonl` and runs validation.
 
-- Runs verify commands when Check Agent stops
-- Blocks completion until all pass
-- Max 5 iterations, 30min timeout
+See [agents.md](./agents.md).
 
-→ See [ralph-loop.md](./ralph-loop.md)
+### Parallel PR-First Work
 
-### Multi-Session
-Parallel isolated sessions using Git worktrees.
+Parallel work uses parent and child tasks. Each child gets its own branch/worktree and draft PR.
 
-- Each session in separate worktree
-- Own branch, own Claude process
-- Automated PR creation
+See [multi-session.md](./multi-session.md).
 
-→ See [multi-session.md](./multi-session.md)
+### Historical Worktree Config
 
-### worktree.yaml
-Configuration for Multi-Session and Ralph Loop.
-
-→ See [worktree-config.md](./worktree-config.md)
+The `worktree-config.md` page is retained only to explain the removed `worktree.yaml` mechanism and map it to current command flags.
 
 ---
 
@@ -74,51 +59,20 @@ Configuration for Multi-Session and Ralph Loop.
 
 | Document | Content |
 |----------|---------|
-| `hooks.md` | Hook system, context injection |
-| `agents.md` | Agent types, invocation, context |
-| `ralph-loop.md` | Quality enforcement mechanism |
-| `multi-session.md` | Parallel worktree sessions |
-| `worktree-config.md` | worktree.yaml configuration |
-| `scripts.md` | Claude Code only scripts |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      CLAUDE CODE INTEGRATION                             │
-│                                                                          │
-│  ┌────────────────┐    ┌────────────────┐    ┌────────────────┐        │
-│  │  SessionStart  │    │  PreToolUse    │    │  SubagentStop  │        │
-│  │     Hook       │    │     Hook       │    │     Hook       │        │
-│  └───────┬────────┘    └───────┬────────┘    └───────┬────────┘        │
-│          │                     │                     │                  │
-│          ▼                     ▼                     ▼                  │
-│  ┌────────────────┐    ┌────────────────┐    ┌────────────────┐        │
-│  │ session-start  │    │ inject-context │    │  ralph-loop    │        │
-│  │     .py        │    │     .py        │    │     .py        │        │
-│  └───────┬────────┘    └───────┬────────┘    └───────┬────────┘        │
-│          │                     │                     │                  │
-│          ▼                     ▼                     ▼                  │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                     CORE SYSTEMS (File-Based)                    │   │
-│  │  Workspace  │  Tasks  │  Specs  │  Commands  │  Scripts          │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+| `hooks.md` | Current Claude Code hook behavior |
+| `agents.md` | Agent types and context loading |
+| `multi-session.md` | PR-first parallel child-task workflow |
+| `scripts.md` | Current script commands and removed-script mapping |
+| `worktree-config.md` | Historical `worktree.yaml` notes |
+| `ralph-loop.md` | Historical removed Ralph Loop notes |
 
 ---
 
 ## Checking Claude Code Availability
 
 ```bash
-# Check if Claude Code is installed
 claude --version
-
-# Verify hooks are configured
-cat .claude/settings.json | grep -A 5 '"hooks"'
+cat .claude/settings.json
 ```
 
-If hooks aren't present, Claude Code features won't work.
+If hooks are missing, Trellis still works from files and commands, but automatic context injection will be unavailable.

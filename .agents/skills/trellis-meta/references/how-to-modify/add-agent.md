@@ -1,8 +1,6 @@
 # How To: Add Agent
 
-Add a new agent type like `my-agent`.
-
-**Platform**: Claude Code only
+Add a new Trellis agent type.
 
 ---
 
@@ -10,212 +8,75 @@ Add a new agent type like `my-agent`.
 
 | File | Action | Required |
 |------|--------|----------|
-| `.claude/agents/my-agent.md` | Create | Yes |
-| `.claude/hooks/inject-subagent-context.py` | Modify | Yes |
-| `.trellis/tasks/{template}/my-agent.jsonl` | Create | Yes |
+| Platform agent definition | Create | Yes |
+| Hook/prelude context loader | Modify if the platform needs explicit routing | Maybe |
+| Task JSONL manifest | Create or curate | Yes |
 | `trellis-local/SKILL.md` | Update | Yes |
-| `.claude/agents/dispatch.md` | Modify | If adding to pipeline |
+| Workflow/commands | Modify if the agent becomes part of standard flow | Maybe |
+
+Examples:
+
+```
+.claude/agents/my-agent.md
+packages/cli/src/templates/claude/agents/my-agent.md
+packages/cli/src/templates/codex/skills/my-agent/SKILL.md
+```
 
 ---
 
 ## Step 1: Create Agent Definition
 
-Create `.claude/agents/my-agent.md`:
+Use the platform's native agent/skill format and document:
 
-```markdown
----
-name: my-agent
-description: |
-  What this agent specializes in.
-  When it should be used.
-tools: Read, Write, Edit, Bash, Glob, Grep
-model: opus
----
-
-# My Agent
-
-## Core Responsibilities
-
-1. Primary responsibility
-2. Secondary responsibility
-3. ...
-
-## Workflow
-
-1. First step
-2. Second step
-3. ...
-
-## Forbidden Operations
-
-- Thing 1 (why it's forbidden)
-- Thing 2 (why it's forbidden)
-- git commit (unless explicitly allowed)
-
-## Output Format
-
-What the agent should produce.
-```
-
-### Agent Definition Fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Agent identifier |
-| `description` | Yes | What the agent does |
-| `tools` | Yes | Allowed tools |
-| `model` | No | Model to use (opus, sonnet) |
+- purpose
+- when to use it
+- allowed tools
+- required context files
+- forbidden operations
+- output format
 
 ---
 
-## Step 2: Update Hook
+## Step 2: Add Context Loading
 
-Edit `.claude/hooks/inject-subagent-context.py`:
+If the platform has hook/prelude routing, add the new agent to that routing. The context source should be a curated JSONL file in the task directory.
 
-### Add Constant
-
-```python
-# Near other agent constants
-AGENT_MY_AGENT = "my-agent"
-
-# Add to list
-AGENTS_ALL = (..., AGENT_MY_AGENT)
-```
-
-### Add Context Function
-
-```python
-def get_my_agent_context(repo_root: str, task_dir: str) -> list:
-    """Get context for my-agent."""
-    context_files = []
-
-    # Load from JSONL
-    jsonl_path = os.path.join(task_dir, "my-agent.jsonl")
-    if os.path.exists(jsonl_path):
-        context_files.extend(load_jsonl_context(jsonl_path))
-
-    # Add any additional files
-    # context_files.append({"file": "...", "reason": "..."})
-
-    return context_files
-```
-
-### Add to Main Switch
-
-```python
-elif subagent_type == AGENT_MY_AGENT:
-    context = get_my_agent_context(repo_root, task_dir)
-    new_prompt = build_agent_prompt(
-        agent_name="My Agent",
-        original_prompt=original_prompt,
-        context=context
-    )
-```
-
----
-
-## Step 3: Create JSONL Template
-
-Create context template for task directories.
-
-**Option A**: Add to `task.py init-context`:
-
-```python
-def init_my_agent_context(task_dir, dev_type):
-    jsonl_path = os.path.join(task_dir, "my-agent.jsonl")
-    with open(jsonl_path, "w") as f:
-        # Add relevant specs
-        f.write(json.dumps({
-            "file": ".trellis/spec/guides/index.md",
-            "reason": "Thinking guides"
-        }) + "\n")
-```
-
-**Option B**: Manually create template:
+Example JSONL:
 
 ```jsonl
 {"file": ".trellis/spec/guides/index.md", "reason": "Thinking guides"}
-{"file": ".trellis/tasks/{task}/prd.md", "reason": "Requirements"}
+{"file": ".trellis/tasks/04-25-example/research/topic.md", "reason": "Research for this agent"}
 ```
+
+Rows without a `file` field are seed rows and should be skipped.
+
+Do not add the agent through `task.py init-context`; that command was removed. Use Phase 1.3 curation or `task.py add-context`.
 
 ---
 
-## Step 4: Add to Pipeline (Optional)
+## Step 3: Add to Workflow If Needed
 
-If the agent should be part of the standard workflow:
-
-### Update task.json Template
-
-```json
-"next_action": [
-  {"phase": 1, "action": "implement"},
-  {"phase": 2, "action": "my-agent"},  // Add here
-  {"phase": 3, "action": "check"},
-  {"phase": 4, "action": "finish"}
-]
-```
-
-### Update dispatch.md
-
-Add handling for the new phase:
-
-```markdown
-## Phase Handling
-
-...
-
-### my-agent Phase
-- Call `Task(subagent_type="my-agent")`
-- Wait for completion
-- Proceed to next phase
-```
+If the agent becomes part of the standard workflow, update `.trellis/workflow.md`, command/skill prompts, and any platform-specific agent instructions. Prefer explicit phase guidance over legacy `next_action` pipeline fields.
 
 ---
 
-## Step 5: Document in trellis-local
+## Step 4: Document in trellis-local
 
-Update `.claude/skills/trellis-local/SKILL.md`:
+Record:
 
-```markdown
-## Agents
-
-### Added Agents
-
-#### my-agent
-- **File**: `.claude/agents/my-agent.md`
-- **Platform**: [CC]
-- **Purpose**: What it does
-- **Tools**: Read, Write, Edit, Bash, Glob, Grep
-- **Added**: 2026-01-31
-- **Reason**: Why it was added
-
-### Hooks Changed
-
-#### inject-subagent-context.py
-- **Change**: Added support for `my-agent` type
-- **Lines modified**: XX-YY
-- **Date**: 2026-01-31
-```
+- agent name and path
+- platform support
+- context JSONL file
+- hook/prelude changes
+- workflow changes
+- validation performed
 
 ---
 
 ## Testing
 
-1. Create a task with my-agent.jsonl
-2. Set as current task: `task.py start <task-dir>`
-3. Invoke agent: `Task(subagent_type="my-agent", prompt="Test")`
-4. Verify context injection works
-5. Verify agent behavior matches definition
-
----
-
-## Checklist
-
-- [ ] Agent definition created with proper frontmatter
-- [ ] Hook updated with agent constant
-- [ ] Hook updated with context function
-- [ ] Hook updated with main switch case
-- [ ] JSONL template created
-- [ ] Added to pipeline (if needed)
-- [ ] Documented in trellis-local
-- [ ] Tested the agent
+1. Create or use a task with the agent JSONL.
+2. Start the task.
+3. Invoke the agent through the platform.
+4. Verify it receives `prd.md`, `info.md`, and curated JSONL context.
+5. Verify output follows the agent contract.

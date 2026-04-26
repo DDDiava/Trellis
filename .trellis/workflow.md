@@ -8,7 +8,8 @@
 2. **Specs injected, not remembered** — guidelines are injected via hook/skill, not recalled from memory
 3. **Persist everything** — research, decisions, and lessons all go to files; conversations get compacted, files don't
 4. **PR-first completion** — medium and large tasks finish as reviewable PRs, not loose commits
-5. **Capture learnings** — after each task, review and write new knowledge back to spec
+5. **Parallel work means parallel PRs** — multiple work items use child tasks, separate branches/worktrees, concurrent workers, and separate draft PRs for human review
+6. **Capture learnings** — after each task, review and write new knowledge back to spec
 
 ---
 
@@ -77,6 +78,10 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>
 > Run `python3 ./.trellis/scripts/task.py --help` to see the authoritative, up-to-date list.
 
 **PR-first lifecycle**: after planning, create an isolated branch/worktree for non-trivial work, open or stage a draft PR with `create-pr`, keep the Trellis-managed PR body section current with `sync-pr`, generate a local review artifact with `review-pr`, then use `finish-pr` to mark the PR ready for human review. Archive only after the PR is merged or the user explicitly confirms local-only completion.
+
+**Parallel PR lifecycle**: when the user asks for parallel work, model it like multiple employees working in parallel. Create a parent task plus child tasks for independent work items, give each child a distinct branch/worktree, and dispatch workers concurrently where dependencies allow. Do not refuse or silently serialize only because shared scaffolding, interfaces, logging, or templates may conflict. Instead, write an ownership/dependency plan that names shared contracts, assigns write ownership, records dependent task order, and uses a short prerequisite scaffold task only when no worker can proceed independently.
+
+Each parallel child task must end with a PR handoff: implementation and check in its own branch/worktree, commit locally, push when a remote is configured, run `task.py create-pr <child> --draft`, then run `sync-pr`, `review-pr`, and `finish-pr`. If `gh` or authentication is unavailable, the worker must leave clear local fallback artifacts such as `pr-body.md`, `review/pr-review-*.md`, task metadata, and the exact push/PR commands for a human to run.
 
 **Current-task mechanism**: `task.py start` writes the task path into `.trellis/.current-task`. Hook-capable platforms auto-inject this at session start, so the AI knows what you're working on without being told.
 
@@ -390,6 +395,21 @@ When code is ready for review, create or stage the draft PR without making GitHu
 ```bash
 python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
 ```
+
+For parallel child tasks, each worker owns the full handoff for its branch/worktree after implementation and check:
+
+```bash
+git status
+git add -A
+git commit -m "<task-slug>: <summary>"
+git push -u origin <branch>          # when a remote is configured
+python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
+python3 ./.trellis/scripts/task.py sync-pr <task-name>
+python3 ./.trellis/scripts/task.py review-pr <task-name>
+python3 ./.trellis/scripts/task.py finish-pr <task-name>
+```
+
+If the push or GitHub PR path is unavailable, continue the local-only path and record the fallback artifacts/commands in the task directory instead of stopping at implementation.
 
 #### 2.2 Quality check `[required · repeatable]`
 

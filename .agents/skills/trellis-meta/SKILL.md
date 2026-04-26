@@ -1,6 +1,6 @@
 ---
 name: trellis-meta
-description: "Meta-skill for understanding and customizing Mindfold Trellis — the AI workflow system for Codex and Cursor. Documents the original Trellis system design including architecture, commands, hooks, and multi-agent pipelines. Use when understanding Trellis architecture, customizing workflows, adding commands or agents, troubleshooting issues, or adapting Trellis to specific projects. Modifications should be recorded in a project-local trellis-local skill, not here."
+description: "Meta-skill for understanding and customizing Mindfold Trellis, including workflow phases, task metadata, PR-first completion, parallel child-task work, hooks, commands, agents, and project-local customization guidance. Modifications should be recorded in a project-local trellis-local skill, not here."
 ---
 
 # Trellis Meta-Skill
@@ -9,449 +9,179 @@ description: "Meta-skill for understanding and customizing Mindfold Trellis — 
 
 | Item | Value |
 |------|-------|
-| **Trellis CLI Version** | 0.3.0-beta.5 |
-| **Skill Last Updated** | 2026-01-31 |
-| **Min Codex Version** | 1.0.0+ |
+| Trellis CLI Version | 0.5.x PR-first workflow |
+| Skill Last Updated | 2026-04-26 |
+| Primary platforms | Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi |
 
-> ⚠️ **Version Mismatch Warning**: If your Trellis CLI version differs from above, some features may not work as documented. Run `trellis --version` to check.
+This skill describes current Trellis behavior. Historical pages are explicitly labeled when they describe removed mechanisms.
+
+---
+
+## Core Contract
+
+Trellis is a file-based workflow system for AI-assisted development:
+
+- Tasks live in `.trellis/tasks/`.
+- Requirements live in each task's `prd.md`; optional design notes live in `info.md`.
+- Context manifests are curated in `implement.jsonl`, `check.jsonl`, and related JSONL files.
+- Project guidance lives under `.trellis/spec/`.
+- Medium and large work should finish as a reviewable PR, not as loose commits.
+- Parallel work should use a parent task plus child tasks, each child on its own branch/worktree with its own draft PR.
 
 ---
 
 ## Platform Compatibility
 
-### Feature Support Matrix
+| Feature | Hook-capable platforms | Pull/self-loading platforms | Manual platforms |
+|---------|------------------------|-----------------------------|------------------|
+| Workspace, tasks, specs | Full | Full | Full |
+| Session workflow breadcrumbs | Hook-injected | Hook/plugin/prelude where available | Read manually |
+| Sub-agent context | Injected from JSONL | Agent prelude loads JSONL | Main session reads specs |
+| PR-first task commands | Full | Full | Full |
+| Parallel child tasks/worktrees | Full via `task.py` + platform workers | Full via `task.py` + platform workers | Manual worker coordination |
 
-| Feature | Codex | Cursor | OpenCode (Future) |
-|---------|-------------|--------|-------------------|
-| **Core Systems** | | | |
-| Workspace system | ✅ Full | ✅ Full | ✅ Planned |
-| Task system | ✅ Full | ✅ Full | ✅ Planned |
-| Spec system | ✅ Full | ✅ Full | ✅ Planned |
-| Slash commands | ✅ Full | ✅ Full | ⏳ TBD |
-| Agent definitions | ✅ Full | ⚠️ Manual | ⏳ TBD |
-| **Hook-Dependent Features** | | | |
-| SessionStart hook | ✅ Full | ❌ None | ⏳ TBD |
-| PreToolUse hook | ✅ Full | ❌ None | ⏳ TBD |
-| SubagentStop hook | ✅ Full | ❌ None | ⏳ TBD |
-| Auto context injection | ✅ Full | ❌ Manual | ⏳ TBD |
-| Ralph Loop | ✅ Full | ❌ None | ⏳ TBD |
-| **Multi-Agent/Session** | | | |
-| Multi-Agent (current dir) | ✅ Full | ⚠️ Limited | ⏳ TBD |
-| Multi-Session (worktrees) | ✅ Full | ❌ None | ⏳ TBD |
-| `Codex --resume` | ✅ Full | ❌ None | ⏳ TBD |
-
-### Legend
-
-- ✅ **Full**: Feature works as documented
-- ⚠️ **Limited/Manual**: Works but requires manual steps
-- ❌ **None**: Not supported on this platform
-- ⏳ **TBD**: Under consideration for future support
-
-### Platform-Specific Notes
-
-#### Codex (Full Support)
-All features work as documented. Hooks provide automatic context injection and quality enforcement.
-
-#### Cursor (Partial Support)
-- **Works**: Workspace, tasks, specs, commands (read manually)
-- **Doesn't work**: Hooks, auto-injection, Ralph Loop, Multi-Session
-- **Workaround**: Manually read spec files at session start; no automatic quality gates
-
-#### OpenCode (Future Consideration)
-- Need to evaluate OpenCode's extension/hook capabilities
-- May require adapter layer for hook compatibility
-- Core file-based systems should work once integrated
-
-### Designing for Portability
-
-When customizing Trellis, consider platform compatibility:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PORTABLE (All Platforms)                  │
-│  - .trellis/workspace/    - .trellis/tasks/                 │
-│  - .trellis/spec/         - .Codex/commands/               │
-│  - File-based configs     - JSONL context files             │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────▼───────────────────────────────┐
-│                  Codex ONLY                            │
-│  - .Codex/hooks/         - .Codex/settings.json hooks     │
-│  - SubagentStop control   - Auto context injection          │
-│  - Ralph Loop             - Multi-Session worktrees         │
-│  - Codex CLI features    - --resume, --agent flags         │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Purpose
-
-This is the **meta-skill** for Trellis - it documents the original, unmodified Trellis system. When customizing Trellis for a specific project, record changes in a **project-local skill** (`trellis-local`), keeping this meta-skill as the authoritative reference for vanilla Trellis.
-
-## Skill Hierarchy
-
-```
-~/.Codex/skills/
-└── trellis-meta/              # THIS SKILL - Original Trellis documentation
-                               # ⚠️ DO NOT MODIFY for project-specific changes
-
-project/.Codex/skills/
-└── trellis-local/             # Project-specific customizations
-                               # ✅ Record all modifications here
-```
-
-**Why this separation?**
-- User may have multiple projects with different Trellis customizations
-- Each project's `trellis-local` skill tracks ITS OWN modifications
-- The meta-skill remains clean as the reference for original Trellis
-- Enables easy upgrades: compare meta-skill with new Trellis version
-
----
-
-## Self-Iteration Protocol
-
-When modifying Trellis for a project, follow this protocol:
-
-### 1. Check for Existing Project Skill
-
-```bash
-# Look for project-local skill
-ls -la .Codex/skills/trellis-local/
-```
-
-### 2. Create Project Skill if Missing
-
-If no `trellis-local` exists, create it:
-
-```bash
-mkdir -p .Codex/skills/trellis-local
-```
-
-Then create `.Codex/skills/trellis-local/SKILL.md`:
-
-```markdown
----
-name: trellis-local
-description: |
-  Project-specific Trellis customizations for [PROJECT_NAME].
-  This skill documents modifications made to the vanilla Trellis system
-  in this project. Inherits from trellis-meta for base documentation.
----
-
-# Trellis Local - [PROJECT_NAME]
-
-## Base Version
-Trellis version: X.X.X (from package.json or trellis --version)
-Date initialized: YYYY-MM-DD
-
-## Customizations
-
-### Commands Added
-(none yet)
-
-### Agents Modified
-(none yet)
-
-### Hooks Changed
-(none yet)
-
-### Specs Customized
-(none yet)
-
-### Workflow Changes
-(none yet)
-
----
-
-## Changelog
-
-### YYYY-MM-DD
-- Initial setup
-```
-
-### 3. Record Every Modification
-
-When making ANY change to Trellis, update `trellis-local/SKILL.md`:
-
-**Example: Adding a new command**
-```markdown
-### Commands Added
-
-#### /trellis:my-command
-- **File**: `.Codex/commands/trellis/my-command.md`
-- **Purpose**: [what it does]
-- **Added**: 2026-01-31
-- **Why**: [reason for adding]
-```
-
-**Example: Modifying a hook**
-```markdown
-### Hooks Changed
-
-#### inject-subagent-context.py
-- **Change**: Added support for `my-agent` type
-- **Lines modified**: 45-67
-- **Date**: 2026-01-31
-- **Why**: [reason]
-```
-
-### 4. Never Modify Meta-Skill for Project Changes
-
-The `trellis-meta` skill should ONLY be updated when:
-- Trellis releases a new version
-- Fixing documentation errors in the original
-- Adding missing documentation for original features
+Current Trellis does not rely on the removed `multi_agent/` script directory, `worktree.yaml`, `common/registry.py`, or `common/worktree.py`.
 
 ---
 
 ## Architecture Overview
 
-Trellis transforms AI assistants into structured development partners through **enforced context injection**.
-
-### System Layers
-
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        USER INTERACTION                              │
-│  /trellis:start  /trellis:parallel  /trellis:finish-work            │
-└─────────────────────────────────┬───────────────────────────────────┘
-                                  │
-┌─────────────────────────────────▼───────────────────────────────────┐
-│                         SKILLS LAYER                                 │
-│  .Codex/commands/trellis/*.md   (slash commands)                   │
-│  .Codex/agents/*.md             (sub-agent definitions)            │
-└─────────────────────────────────┬───────────────────────────────────┘
-                                  │
-┌─────────────────────────────────▼───────────────────────────────────┐
-│                          HOOKS LAYER                                 │
-│  SessionStart     → session-start.py (injects workflow + context)   │
-│  PreToolUse:Task  → inject-subagent-context.py (spec injection)     │
-│  SubagentStop     → ralph-loop.py (quality enforcement)             │
-└─────────────────────────────────┬───────────────────────────────────┘
-                                  │
-┌─────────────────────────────────▼───────────────────────────────────┐
-│                       PERSISTENCE LAYER                              │
-│  .trellis/workspace/  (journals, session history)                   │
-│  .trellis/tasks/      (task tracking, context files)                │
-│  .trellis/spec/       (coding guidelines)                           │
-└─────────────────────────────────────────────────────────────────────┘
+User request
+  -> workflow.md phase rules
+  -> task directory (prd.md, info.md, task.json, context jsonl)
+  -> platform command/skill/agent prompts
+  -> implement/check agents or main-session equivalent
+  -> PR-first handoff commands
 ```
 
-### Key Design Principles
-
-| Principle | Description |
-|-----------|-------------|
-| **Specs Injected, Not Remembered** | Hooks enforce specs - agents always receive context |
-| **Read Before Write** | Understand guidelines before writing code |
-| **Layered Context** | Only relevant specs load (via JSONL files) |
-| **Human Commits** | AI never commits - human validates first |
-| **Pure Dispatcher** | Dispatch agent only orchestrates |
-
----
-
-## Core Components
-
-### 1. Workspace System
-
-Track development progress across sessions with per-developer isolation.
+### Persistence Layer
 
 ```
-.trellis/workspace/
-├── index.md                    # Global overview
-└── {developer}/                # Per-developer
-    ├── index.md                # Personal index (@@@auto markers)
-    └── journal-N.md            # Session journals (max 2000 lines)
+.trellis/
+├── workflow.md
+├── workspace/
+├── tasks/
+├── spec/
+└── scripts/
 ```
 
-**Key files**: `.trellis/.developer` (identity), journals (session history)
-
-### 2. Task System
-
-Track work items with phase-based execution.
+### Platform Layer
 
 ```
-.trellis/tasks/{MM-DD-slug-assignee}/
-├── task.json           # Metadata, phases, branch
-├── prd.md              # Requirements
-├── implement.jsonl     # Context for implement agent
-├── check.jsonl         # Context for check agent
-└── debug.jsonl         # Context for debug agent
-```
-
-### 3. Spec System
-
-Maintain coding standards that get injected to agents.
-
-```
-.trellis/spec/
-├── frontend/           # Frontend guidelines
-├── backend/            # Backend guidelines
-└── guides/             # Thinking guides
-```
-
-### 4. Hooks System
-
-Automatically inject context and enforce quality.
-
-| Hook | When | Purpose |
-|------|------|---------|
-| `SessionStart` | Session begins | Inject workflow, guidelines |
-| `PreToolUse:Task` | Before sub-agent | Inject specs via JSONL |
-| `SubagentStop:check` | Check agent stops | Enforce verification (Ralph Loop) |
-
-### 5. Agent System
-
-Specialized agents for different phases.
-
-| Agent | Purpose | Restriction |
-|-------|---------|-------------|
-| `dispatch` | Orchestrate pipeline | Pure dispatcher |
-| `plan` | Evaluate requirements | Can reject unclear reqs |
-| `research` | Find code patterns | Read-only |
-| `implement` | Write code | No git commit |
-| `check` | Review and self-fix | Ralph Loop controlled |
-| `debug` | Fix issues | Precise fixes only |
-
-### 6. Multi-Agent Pipeline
-
-Run parallel isolated sessions via Git worktrees.
-
-```
-plan.py → start.py → Dispatch → implement → check → create-pr
+.claude/       # Claude Code commands, agents, hooks
+.cursor/       # Cursor commands/hooks
+.opencode/     # OpenCode commands/plugins/agents
+.agents/       # Shared Codex-style skills
+packages/cli/src/templates/
 ```
 
 ---
 
-## Customization Guide
+## Task System
 
-### Adding a Command
+Task directories contain:
 
-1. Create `.Codex/commands/trellis/my-command.md`
-2. Update `trellis-local` skill with the change
+```
+.trellis/tasks/{MM-DD-slug}/
+├── task.json
+├── prd.md
+├── info.md
+├── implement.jsonl
+├── check.jsonl
+└── research/
+```
 
-### Adding an Agent
+Important metadata includes branch/worktree and PR review fields: `branch`, `base_branch`, `worktree_path`, `pr_url`, `pr_number`, `pr_status`, `review_status`, `ci_status`, `labels`, `reviewers`, `merge_strategy`, and `validation`.
 
-1. Create `.Codex/agents/my-agent.md` with YAML frontmatter
-2. Update `inject-subagent-context.py` to handle new agent type
-3. Create `my-agent.jsonl` in task directories
-4. Update `trellis-local` skill
+---
 
-### Modifying Hooks
+## PR-First Parallel Contract
 
-1. Edit the hook script in `.Codex/hooks/`
-2. Document the change in `trellis-local` skill
-3. Note which lines were modified and why
+When the user asks for parallel development:
 
-### Extending Specs
+1. Create one parent task for coordination.
+2. Create one child task per independently reviewable work item.
+3. Record an ownership/dependency plan for shared contracts, shared files, interfaces, migrations, templates, and sequencing.
+4. Prefer disjoint write scopes; use a prerequisite scaffold child task only when no worker can proceed independently.
+5. Give every child a separate branch/worktree with `task.py worktree`.
+6. Each worker runs implement/check for its child task.
+7. Each worker completes a PR handoff:
 
-1. Create new category in `.trellis/spec/my-category/`
-2. Add `index.md` and guideline files
-3. Reference in JSONL context files
-4. Update `trellis-local` skill
+```bash
+git status
+git add -A
+git commit -m "<task-slug>: <summary>"
+git push -u origin <branch>
+python3 ./.trellis/scripts/task.py create-pr <child-task> --draft
+python3 ./.trellis/scripts/task.py sync-pr <child-task>
+python3 ./.trellis/scripts/task.py review-pr <child-task>
+python3 ./.trellis/scripts/task.py finish-pr <child-task>
+```
 
-### Changing Task Workflow
+If `gh`, auth, or a remote is unavailable, workers leave local fallback artifacts such as `pr-body.md`, `review/pr-review-*.md`, task metadata, and exact push/PR commands.
 
-1. Modify `next_action` array in `task.json`
-2. Update dispatch or hook scripts as needed
-3. Document in `trellis-local` skill
+---
+
+## Key Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `.trellis/scripts/get_context.py` | Show session, task, git, and spec context |
+| `.trellis/scripts/task.py` | Task CRUD, context JSONL, branch/worktree, and PR commands |
+| `.trellis/scripts/add_session.py` | Record session progress |
+| `.trellis/scripts/init_developer.py` | Initialize developer identity |
+
+Key PR-first commands:
+
+```bash
+python3 ./.trellis/scripts/task.py worktree <task> --dry-run
+python3 ./.trellis/scripts/task.py worktree <task>
+python3 ./.trellis/scripts/task.py create-pr <task> --draft
+python3 ./.trellis/scripts/task.py sync-pr <task>
+python3 ./.trellis/scripts/task.py review-pr <task>
+python3 ./.trellis/scripts/task.py finish-pr <task>
+```
+
+---
+
+## Historical Removed Items
+
+These names can appear in migration notes only. They are not active guidance:
+
+| Removed item | Current replacement |
+|--------------|---------------------|
+| `.trellis/scripts/multi_agent/plan.py` | Phase 1 task creation + PRD/research + curated JSONL |
+| `.trellis/scripts/multi_agent/start.py` | `task.py worktree <task>` plus platform worker dispatch |
+| `.trellis/scripts/multi_agent/status.py` | `task.py list`, `git worktree list`, platform session UI |
+| `.trellis/scripts/multi_agent/create_pr.py` | `task.py create-pr <task> --draft` |
+| `.trellis/scripts/multi_agent/cleanup.py` | `git worktree remove` plus archive after merge |
+| `task.py init-context` | Phase 1.3 curated JSONL + `task.py add-context` |
+| `.trellis/worktree.yaml` | `task.py worktree` flags and task metadata |
+| `common/registry.py`, `common/worktree.py` | `common/task_pr.py` and normal git/platform state |
 
 ---
 
 ## Resources
 
-Reference documents are organized by platform compatibility:
+| Directory | Purpose |
+|-----------|---------|
+| `references/core/` | Cross-platform tasks, scripts, files, specs, workspace |
+| `references/claude-code/` | Claude Code hooks, agents, and current platform-specific notes |
+| `references/how-to-modify/` | Customization recipes |
+| `references/meta/` | Project-local skill template and maintenance guidance |
 
-```
-references/
-├── core/              # All Platforms (Codex, Cursor, etc.)
-├── Codex/       # Codex Only
-├── how-to-modify/     # Modification Guides
-└── meta/              # Documentation & Templates
-```
-
-### `core/` - All Platforms
-
-| Document | Content |
-|----------|---------|
-| `overview.md` | Core systems introduction |
-| `files.md` | All `.trellis/` files with purposes |
-| `workspace.md` | Workspace system, journals, developer identity |
-| `tasks.md` | Task system, directories, JSONL context files |
-| `specs.md` | Spec system, guidelines organization |
-| `scripts.md` | Platform-independent scripts |
-
-### `Codex/` - Codex Only
-
-| Document | Content |
-|----------|---------|
-| `overview.md` | Codex features introduction |
-| `hooks.md` | Hook system, context injection |
-| `agents.md` | Agent types, invocation, Task tool |
-| `ralph-loop.md` | Quality enforcement mechanism |
-| `multi-session.md` | Parallel worktree sessions |
-| `worktree-config.md` | worktree.yaml configuration |
-| `scripts.md` | Codex only scripts |
-
-### `how-to-modify/` - Modification Guides
-
-| Document | Scenario |
-|----------|----------|
-| `overview.md` | Quick reference for all modifications |
-| `add-command.md` | Adding slash commands |
-| `add-agent.md` | Adding new agent types |
-| `add-spec.md` | Adding spec categories |
-| `add-phase.md` | Adding workflow phases |
-| `modify-hook.md` | Modifying hook behavior |
-| `change-verify.md` | Changing verify commands |
-
-### `meta/` - Documentation
-
-| Document | Content |
-|----------|---------|
-| `platform-compatibility.md` | Detailed platform support matrix |
-| `self-iteration-guide.md` | How to document customizations |
-| `trellis-local-template.md` | Template for project-local skill |
+Start with `references/core/tasks.md`, `references/core/scripts.md`, and `references/claude-code/multi-session.md` for PR-first parallel workflow details.
 
 ---
 
-## Quick Reference
+## Customization Protocol
 
-### Key Scripts
+Project-specific Trellis changes belong in a `trellis-local` skill:
 
-| Script | Purpose |
-|--------|---------|
-| `get_context.py` | Get session context |
-| `task.py` | Task management |
-| `add_session.py` | Record session |
-| `multi_agent/start.py` | Start parallel agent |
-
-### Key Paths
-
-| Path | Purpose |
-|------|---------|
-| `.trellis/.developer` | Developer identity |
-| `.trellis/.current-task` | Active task pointer |
-| `.trellis/workflow.md` | Main workflow docs |
-| `.Codex/settings.json` | Hook configuration |
-
----
-
-## Upgrade Protocol
-
-When upgrading Trellis to a new version:
-
-1. **Compare** new meta-skill with current
-2. **Review** changes in new version
-3. **Check** `trellis-local` for conflicts
-4. **Merge** carefully, preserving customizations
-5. **Update** `trellis-local` with migration notes
-
-```markdown
-## Changelog
-
-### 2026-02-01 - Upgraded to Trellis X.Y.Z
-- Merged new hook behavior from meta-skill
-- Kept custom agent `my-agent`
-- Updated check.jsonl template
 ```
+.claude/skills/trellis-local/SKILL.md
+.agents/skills/trellis-local/SKILL.md
+```
+
+Record what changed, why it changed, affected files, validation, and migration notes. Update `trellis-meta` only when changing vanilla Trellis documentation itself.
