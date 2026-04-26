@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { getCommandTemplates } from "../../src/templates/common/index.js";
 import { getAllPrompts } from "../../src/templates/copilot/index.js";
+import { getSharedHookScripts } from "../../src/templates/shared-hooks/index.js";
 import {
   commonTaskPr,
   commonTaskStore,
@@ -61,6 +62,16 @@ function collectMarkdownFiles(root: string): TextFile[] {
 
   walk(root);
   return files;
+}
+
+function readRepoText(relativePath: string): string {
+  return fs
+    .readFileSync(path.join(repoRoot(), relativePath), "utf-8")
+    .replace(/\r\n/g, "\n");
+}
+
+function stripLeadingFrontmatter(content: string): string {
+  return content.replace(/^---\n[\s\S]*?\n---\n\n?/, "");
 }
 
 function writeTrellisScripts(root: string): void {
@@ -407,15 +418,44 @@ describe("PR-first workflow templates", () => {
     expect(finishWork?.content).toContain("review-pr <task-name>");
     expect(finishWork?.content).toContain("finish-pr <task-name>");
     expect(finishWork?.content).toContain("Do not archive by default before merge");
+    expect(finishWork?.content).toContain("Post-Merge Reconcile");
+    expect(finishWork?.content).toContain("git fetch origin");
+    expect(finishWork?.content).toContain("git status --short --branch");
+    expect(finishWork?.content).toContain(
+      "Local untracked or dirty files are a blocker",
+    );
+    expect(finishWork?.content).toContain(
+      "git pull --ff-only origin <base-branch>",
+    );
+    expect(finishWork?.content).toContain(
+      "Do not archive or record the session until the local base branch matches `origin/<base-branch>`",
+    );
     expect(finishWork?.content).not.toContain(
       "Please review the changes and commit when ready.",
     );
 
     expect(workflowMdTemplate).toContain("PR-first lifecycle");
+    expect(workflowMdTemplate).toContain("Post-merge reconcile gate");
     expect(workflowMdTemplate).toContain("task.py worktree");
     expect(workflowMdTemplate).toContain("task.py finish-pr");
+    expect(workflowMdTemplate).toContain("git fetch origin");
+    expect(workflowMdTemplate).toContain("git status --short --branch");
+    expect(workflowMdTemplate).toContain(
+      "git pull --ff-only origin <base-branch>",
+    );
+    expect(workflowMdTemplate).toContain(
+      "Do not archive or record the session until the local base branch matches `origin/<base-branch>`",
+    );
     expect(pullRequestTemplate).toContain("## Validation Evidence");
     expect(pullRequestTemplate).toContain("<!-- trellis:start -->");
+
+    const sharedHookContent = getSharedHookScripts()
+      .map((hook) => hook.content)
+      .join("\n");
+    expect(sharedHookContent).toContain("post-merge reconcile");
+    expect(sharedHookContent).toContain(
+      "only after the local base branch is current",
+    );
 
     const ci = fs.readFileSync(
       path.join(repoRoot(), ".github", "workflows", "ci.yml"),
@@ -426,6 +466,64 @@ describe("PR-first workflow templates", () => {
     expect(ci).toContain("run: pnpm typecheck");
     expect(ci).toContain("run: pnpm test");
     expect(ci).toContain("run: pnpm build");
+  });
+
+  it("keeps dogfood copies aligned on post-merge reconcile guidance", () => {
+    const finishWork = getCommandTemplates().find(
+      (template) => template.name === "finish-work",
+    );
+    const generatedFinishWork = (finishWork?.content ?? "").replace(
+      /\{\{PYTHON_CMD\}\}/g,
+      "python3",
+    );
+
+    for (const localPath of [
+      ".claude/commands/trellis/finish-work.md",
+      ".cursor/commands/trellis-finish-work.md",
+      ".agents/skills/trellis-finish-work/SKILL.md",
+    ]) {
+      expect(stripLeadingFrontmatter(readRepoText(localPath))).toBe(
+        generatedFinishWork,
+      );
+    }
+
+    expect(readRepoText(".trellis/workflow.md")).toBe(
+      workflowMdTemplate.replace(/\r\n/g, "\n"),
+    );
+
+    const parallelPrompt = getAllPrompts().find(
+      (prompt) => prompt.name === "parallel",
+    );
+    expect(readRepoText(".claude/commands/trellis/parallel.md")).toBe(
+      stripLeadingFrontmatter(parallelPrompt?.content ?? ""),
+    );
+
+    const changedHookPaths = [
+      ".claude/hooks/inject-workflow-state.py",
+      ".claude/hooks/session-start.py",
+      ".codex/hooks/inject-workflow-state.py",
+      ".codex/hooks/session-start.py",
+      ".cursor/hooks/inject-workflow-state.py",
+      ".cursor/hooks/session-start.py",
+      "packages/cli/src/templates/codex/hooks/session-start.py",
+      "packages/cli/src/templates/copilot/hooks/session-start.py",
+      "packages/cli/src/templates/opencode/plugins/inject-workflow-state.js",
+      "packages/cli/src/templates/opencode/plugins/session-start.js",
+      "packages/cli/src/templates/shared-hooks/inject-workflow-state.py",
+      "packages/cli/src/templates/shared-hooks/session-start.py",
+    ];
+
+    for (const hookPath of changedHookPaths) {
+      const content = readRepoText(hookPath);
+      const normalizedContent = content.replace(/["'`+]/g, " ").replace(/\s+/g, " ");
+      expect(normalizedContent).toContain("post-merge reconcile");
+      expect(normalizedContent).toContain(
+        "only after the local base branch is current",
+      );
+      expect(content).not.toMatch(
+        /User commits changes; then run task\.py archive|Next: Archive with `python3 \.\/\.trellis\/scripts\/task\.py archive/,
+      );
+    }
   });
 
   it("documents parallel child-task PR handoff and avoids removed pipeline scripts", () => {
@@ -461,6 +559,22 @@ describe("PR-first workflow templates", () => {
     expect(parallelContent).toContain("task.py finish-pr <child-task>");
     expect(parallelContent).toContain("pr-body.md");
     expect(parallelContent).toContain("review/pr-review-*.md");
+    expect(parallelContent).toContain("Parent Post-Merge Reconcile");
+    expect(parallelContent).toContain("git fetch origin");
+    expect(parallelContent).toContain("git status --short --branch");
+    expect(parallelContent).toContain(
+      "git pull --ff-only origin <base-branch>",
+    );
+    expect(parallelContent).toContain(
+      "verify every child PR merge commit is present locally",
+    );
+    expect(parallelContent).toContain("git merge-base --is-ancestor");
+    expect(parallelContent).toContain("git worktree remove <worktree-path>");
+    expect(parallelContent).toContain("git branch -d task/<child-task>");
+    expect(parallelContent).toContain("git rev-parse --show-toplevel");
+    expect(parallelContent).toContain(
+      "final current-state directory and branch",
+    );
     expect(parallelContent).not.toContain("task.py init-context");
     expect(parallelContent).not.toContain("multi_agent");
 

@@ -77,11 +77,15 @@ python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>
 
 > Run `python3 ./.trellis/scripts/task.py --help` to see the authoritative, up-to-date list.
 
-**PR-first lifecycle**: after planning, create an isolated branch/worktree for non-trivial work, open or stage a draft PR with `create-pr`, keep the Trellis-managed PR body section current with `sync-pr`, generate a local review artifact with `review-pr`, then use `finish-pr` to mark the PR ready for human review. Archive only after the PR is merged or the user explicitly confirms local-only completion.
+**PR-first lifecycle**: after planning, create an isolated branch/worktree for non-trivial work, open or stage a draft PR with `create-pr`, keep the Trellis-managed PR body section current with `sync-pr`, generate a local review artifact with `review-pr`, then use `finish-pr` to mark the PR ready for human review. After the PR is merged, reconcile the local base branch with `origin/<base-branch>` before archiving or recording the session. Archive only after the PR is merged and post-merge reconcile is complete, or after the user explicitly confirms local-only completion.
+
+**Post-merge reconcile gate**: before archiving, fetch `origin`, confirm the current workspace is on the base branch (usually `main`), inspect `git status --short --branch`, and treat any local untracked or dirty files as a blocker that requires backup, commit, stash, or a user decision before pulling. Run `git pull --ff-only origin <base-branch>` only when the base workspace is clean and on the base branch. After pulling, verify the local base branch and `origin/<base-branch>` resolve to the same commit. Do not archive or record the session until the local base branch matches `origin/<base-branch>`.
 
 **Parallel PR lifecycle**: when the user asks for parallel work, model it like multiple employees working in parallel. Create a parent task plus child tasks for independent work items, give each child a distinct branch/worktree, and dispatch workers concurrently where dependencies allow. Do not refuse or silently serialize only because shared scaffolding, interfaces, logging, or templates may conflict. Instead, write an ownership/dependency plan that names shared contracts, assigns write ownership, records dependent task order, and uses a short prerequisite scaffold task only when no worker can proceed independently.
 
 Each parallel child task must end with a PR handoff: implementation and check in its own branch/worktree, commit locally, push when a remote is configured, run `task.py create-pr <child> --draft`, then run `sync-pr`, `review-pr`, and `finish-pr`. If `gh` or authentication is unavailable, the worker must leave clear local fallback artifacts such as `pr-body.md`, `review/pr-review-*.md`, task metadata, and the exact push/PR commands for a human to run.
+
+After child PRs are merged, run a parent-level post-merge reconcile in the parent/main workspace: fetch `origin`, update the base branch with a safe `git pull --ff-only origin <base-branch>`, verify every child PR merge commit is present locally, then clean up merged child worktrees and branches only after the local base branch is current and clean. Report the directory and branch that now contain the final current state.
 
 **Current-task mechanism**: `task.py start` writes the task path into `.trellis/.current-task`. Hook-capable platforms auto-inject this at session start, so the AI knows what you're working on without being told.
 
@@ -111,7 +115,7 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed 
 ```
 Phase 1: Plan    → figure out what to do (brainstorm + research → prd.md)
 Phase 2: Execute → write code, prepare a draft PR, and pass quality checks
-Phase 3: Finish  → sync/review the PR, distill lessons, then wrap up after merge
+Phase 3: Finish  → sync/review the PR, reconcile local base after merge, then archive/record
 ```
 
 ### Phase 1: Plan
@@ -130,7 +134,8 @@ Phase 3: Finish  → sync/review the PR, distill lessons, then wrap up after mer
 - 3.1 Quality verification `[required · repeatable]`
 - 3.2 Debug retrospective `[on demand]`
 - 3.3 Spec update `[required · once]`
-- 3.4 Wrap-up reminder
+- 3.4 Post-merge reconcile `[required after merge]`
+- 3.5 Archive and wrap-up reminder
 
 ### Rules
 
@@ -485,9 +490,49 @@ Load the `trellis-update-spec` skill and review whether this task produced new k
 
 Update the docs under `.trellis/spec/` accordingly. Even if the conclusion is "nothing to update", walk through the judgment.
 
-#### 3.4 Wrap-up reminder
+#### 3.4 Post-merge reconcile `[required after merge]`
 
-After the above, remind the user they can run `/finish-work` to prepare or update the PR for human review. Do not archive by default before merge; after the PR is merged, archive the task and record the session.
+After the PR is merged, make the local base workspace current before archiving or recording the session. Use the PR base branch or `task.json.base_branch`; this is usually `main`.
+
+```bash
+git fetch origin
+git branch --show-current
+git status --short --branch
+```
+
+Confirm the current branch is `<base-branch>`. Inspect `git status --short --branch` before pulling. If it shows local untracked or dirty files, stop: back them up, commit them, stash them, or ask the user what to do. Do not pull over local uncertainty.
+
+Only when the workspace is on the base branch and clean:
+
+```bash
+git pull --ff-only origin <base-branch>
+git status --short --branch
+git rev-parse <base-branch>
+git rev-parse origin/<base-branch>
+```
+
+Verify the two `git rev-parse` commands print the same commit SHA. If they differ, do not archive or record the session yet.
+
+For parallel child PRs, run this once from the parent/main workspace after all child PRs are merged. Verify every child PR merge commit is present locally before cleanup:
+
+```bash
+git merge-base --is-ancestor <child-merge-sha> <base-branch>
+```
+
+Then remove merged child worktrees and branches only after `git status --short --branch` confirms the local base workspace is current and clean:
+
+```bash
+git worktree remove <worktree-path>
+git branch -d task/<child-task>
+git rev-parse --show-toplevel
+git branch --show-current
+```
+
+Report the final current-state directory and branch to the user.
+
+#### 3.5 Archive and wrap-up reminder
+
+After the above, remind the user they can run `/finish-work` to prepare or update the PR for human review. Do not archive by default before merge. After the PR is merged, post-merge reconcile is complete, and the local base branch matches `origin/<base-branch>`, archive the task and record the session.
 
 ---
 
@@ -523,5 +568,5 @@ For agent-capable platforms, do NOT edit code in the main session; dispatch `tre
 [/workflow-state:in_progress]
 
 [workflow-state:completed]
-User merges or confirms local-only completion; then run task.py archive.
+User merges or confirms local-only completion; run post-merge reconcile first, then archive only after the local base branch is current.
 [/workflow-state:completed]

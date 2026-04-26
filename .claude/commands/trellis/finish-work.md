@@ -56,9 +56,36 @@ python3 ./.trellis/scripts/task.py finish-pr <task-name>
 
 Tell the user:
 
-> "The PR is prepared for human review. Please review, push/merge as appropriate, then run `/finish-work` again after merge if you want to archive and record the session."
+> "The PR is prepared for human review. Please review, push/merge as appropriate, then run `/finish-work` again after merge so I can reconcile the local base branch before archiving or recording the session."
 
-Do not archive by default before merge. After the PR is merged and the user confirms the task is done, archive and record the session:
+Do not archive by default before merge.
+
+## Step 5: Post-Merge Reconcile
+
+Run this only after the PR is merged, or after the user explicitly confirms local-only completion. Use the PR base branch or `task.json.base_branch`; this is usually `main`.
+
+```bash
+git fetch origin
+git branch --show-current
+git status --short --branch
+```
+
+Confirm the current workspace is on `<base-branch>`. Inspect `git status --short --branch` before pulling. Local untracked or dirty files are a blocker requiring backup, commit, stash, or a user decision before pull.
+
+Only when the workspace is on the base branch and clean:
+
+```bash
+git pull --ff-only origin <base-branch>
+git status --short --branch
+git rev-parse <base-branch>
+git rev-parse origin/<base-branch>
+```
+
+Verify both `git rev-parse` commands print the same commit SHA. Do not archive or record the session until the local base branch matches `origin/<base-branch>`.
+
+## Step 6: Archive And Record
+
+After post-merge reconcile is clean and current, archive and record the session:
 
 ```bash
 python3 ./.trellis/scripts/task.py archive <task-name>

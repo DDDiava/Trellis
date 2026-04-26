@@ -614,6 +614,20 @@ python3 ./.trellis/scripts/task.py review-pr "$CHILD_TASK"
 python3 ./.trellis/scripts/task.py finish-pr "$CHILD_TASK"
 ```
 
+Parent/main workspace reconcile after merge:
+
+```bash
+git fetch origin
+git branch --show-current
+git status --short --branch
+git pull --ff-only origin <base-branch>
+git rev-parse <base-branch>
+git rev-parse origin/<base-branch>
+git merge-base --is-ancestor <child-merge-sha> <base-branch>
+git worktree remove <worktree-path>
+git branch -d task/<child-task>
+```
+
 ### 3. Contracts
 
 | Contract | Required behavior |
@@ -625,6 +639,9 @@ python3 ./.trellis/scripts/task.py finish-pr "$CHILD_TASK"
 | Branch/worktree | Each child gets a distinct branch and worktree before code writing begins |
 | PR handoff | Each worker commits, pushes when configured, creates/stages a draft PR, syncs PR body, writes review artifact, and marks ready for human review when gates allow |
 | Local fallback | If `gh` or auth is unavailable, create local PR body/review artifacts and leave task metadata in a clear local/draft state |
+| Post-merge reconcile | After child PRs are merged, update the parent/main workspace base branch from `origin/<base-branch>` before archiving tasks or cleaning worktrees |
+| Local safety | Dirty or untracked files block `git pull --ff-only`; the orchestrator must ask for backup/commit/stash/user decision before pulling |
+| Cleanup order | Remove child worktrees and branches only after local base matches `origin/<base-branch>` and child merge commits are ancestors of the local base |
 | Platform parity | Claude, OpenCode, Copilot, and any future parallel prompt must express the same lifecycle even if command syntax differs |
 
 ### 4. Validation & Error Matrix
@@ -636,14 +653,18 @@ python3 ./.trellis/scripts/task.py finish-pr "$CHILD_TASK"
 | Child created with `--parent` | Do not also call `add-subtask`; `create --parent` already links the child |
 | Worker finishes code | Worker runs check, commits, and performs PR handoff commands for its own child task |
 | GitHub CLI missing | Workflow does not fail hard; worker leaves local PR body/review artifacts and manual next steps |
+| Child PRs merged on remote but local base is behind | Orchestrator fetches, verifies it is in the parent/main workspace on the base branch, checks cleanliness, then fast-forwards with `git pull --ff-only origin <base-branch>` |
+| Local base workspace has dirty or untracked files | Orchestrator stops before pull and asks the user to back up, commit, stash, or choose how to handle the files |
+| Local base still differs from `origin/<base-branch>` after pull | Do not archive tasks, record session, or clean worktrees; report the mismatch and resolve first |
+| Child worktree cleanup requested before base reconcile | Regression; cleanup is blocked until local base is current and clean |
 | Template mentions removed multi-agent scripts | Regression; shipped prompts must not reference nonexistent `.trellis/scripts/multi_agent/*.py` |
 | Template mentions `task.py init-context` as orchestration guidance | Regression; only the intentional `task.py` deprecation guard may mention it |
 
 ### 5. Good / Base / Bad Cases
 
-- Good: A four-part backend feature becomes one parent task plus four child tasks, each with explicit write ownership, isolated worktree, and draft PR. A shared DTO or error contract is documented once and owned by one child or a scaffold prerequisite.
+- Good: A four-part backend feature becomes one parent task plus four child tasks, each with explicit write ownership, isolated worktree, and draft PR. A shared DTO or error contract is documented once and owned by one child or a scaffold prerequisite. After the PRs merge, the parent/main workspace fast-forwards to `origin/main`, verifies every child merge commit is present, and only then cleans merged child worktrees/branches.
 - Base: A small task remains single-worker and uses the normal PR-first finish flow.
-- Bad: The orchestrator says "true parallel coding would conflict" and only starts one implementation worker while other workers prepare context. This violates the multi-worker contract.
+- Bad: The orchestrator says "true parallel coding would conflict" and only starts one implementation worker while other workers prepare context. Another bad case is archiving tasks after GitHub shows merged PRs while the local parent/main workspace is still behind `origin/main`.
 
 ### 6. Tests Required
 
@@ -654,6 +675,7 @@ python3 ./.trellis/scripts/task.py finish-pr "$CHILD_TASK"
 | Removed-script regression | Shipped templates do not reference removed `multi_agent` scripts or `init-context` orchestration commands |
 | Parent-link regression | Prompt examples do not call `add-subtask` after `create --parent` |
 | Template parity | Live prompt files and installable template files carry equivalent parallel PR-first requirements |
+| Post-merge reconcile regression | Workflow, finish-work command, parallel prompts, and hook fallbacks require reconcile before archive and include `git fetch origin`, cleanliness check, `git pull --ff-only`, and local-vs-origin SHA verification |
 
 ### 7. Wrong vs Correct
 
@@ -665,6 +687,12 @@ True parallel coding may conflict on shared scaffolding. Start one implementer f
 
 This turns a multi-worker request into a serialized implementation and prevents independent PR review.
 
+```markdown
+The child PRs are merged on GitHub. Archive the tasks and delete the worktrees.
+```
+
+This leaves the user's open local main workspace stale and can delete the only local view of merged work before the base branch is current.
+
 #### Correct
 
 ```markdown
@@ -674,6 +702,15 @@ and require each worker to finish with draft PR handoff commands.
 ```
 
 The coordination layer manages conflicts; it does not remove parallelism as the default.
+
+```markdown
+After child PRs merge, fetch origin, confirm the parent/main workspace is on the
+base branch and clean, fast-forward with `git pull --ff-only origin
+<base-branch>`, verify local and origin SHAs match, verify child merge commits
+are ancestors, then clean merged worktrees/branches and archive.
+```
+
+The user's current local directory becomes the final merged state before Trellis records completion.
 
 ## Subagent Context Injection: Hook-based vs Pull-based vs Extension-backed
 

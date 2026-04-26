@@ -178,12 +178,14 @@ def _get_task_status(trellis_dir: Path) -> str:
     task_title = task_data.get("title", task_ref)
     task_status = task_data.get("status", "unknown")
 
-    # Case 3: Task completed — time to archive
+    # Case 3: Task completed — reconcile before archive
     if task_status == "completed":
         return (
             f"Status: COMPLETED\nTask: {task_title}\n"
             f"Next-Action: Load skill `trellis-update-spec` to capture learnings, "
-            f"then archive with `python3 ./.trellis/scripts/task.py archive {task_dir.name}`."
+            "then run the post-merge reconcile from `.trellis/workflow.md`. "
+            f"Archive with `python3 ./.trellis/scripts/task.py archive {task_dir.name}` "
+            "only after the local base branch is current."
         )
 
     has_prd = (task_dir / "prd.md").is_file()

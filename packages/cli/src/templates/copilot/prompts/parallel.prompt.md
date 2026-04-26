@@ -157,6 +157,46 @@ Expected artifacts per child:
 
 ---
 
+## Parent Post-Merge Reconcile
+
+After all child PRs are merged, reconcile the parent/main workspace before archiving tasks or cleaning up worker state:
+
+```bash
+git fetch origin
+git branch --show-current
+git status --short --branch
+```
+
+Confirm the current workspace is on `<base-branch>` (usually `main`). Inspect `git status --short --branch` before pulling. Local untracked or dirty files are a blocker requiring backup, commit, stash, or a user decision before pull.
+
+Only when the parent/main workspace is on the base branch and clean:
+
+```bash
+git pull --ff-only origin <base-branch>
+git status --short --branch
+git rev-parse <base-branch>
+git rev-parse origin/<base-branch>
+```
+
+Verify both `git rev-parse` commands print the same commit SHA, then verify every child PR merge commit is present locally:
+
+```bash
+git merge-base --is-ancestor <child-merge-sha> <base-branch>
+```
+
+Clean up merged child worktrees and branches only after the local base is current and clean:
+
+```bash
+git worktree remove <worktree-path>
+git branch -d task/<child-task>
+git rev-parse --show-toplevel
+git branch --show-current
+```
+
+Report the directory and branch that now contain the final current state.
+
+---
+
 ## Monitoring And Reporting
 
 Use normal git and task status commands; there is no legacy pipeline status script:
@@ -172,6 +212,7 @@ Report progress by child task:
 - Running: worker, branch, worktree, owned scope.
 - Blocked: dependency or contract question.
 - Ready for review: PR URL or local fallback artifact path.
+- Post-merge reconciled: final current-state directory and branch.
 - Needs attention: conflict, failed validation, missing auth, or dependency change.
 
-Human review should happen per child PR. Merge/archive only after the PR is merged or the user explicitly confirms local-only completion.
+Human review should happen per child PR. Merge/archive only after the PR is merged or the user explicitly confirms local-only completion, and archive only after the parent/main workspace has completed post-merge reconcile.

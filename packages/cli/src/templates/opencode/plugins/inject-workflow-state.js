@@ -64,7 +64,8 @@ const FALLBACK_BREADCRUMBS = {
     "dispatch `trellis-implement` for implementation and dispatch " +
     "`trellis-check` before reporting completion.",
   completed:
-    "User commits changes; then run task.py archive.",
+    "User merges or confirms local-only completion; run post-merge " +
+    "reconcile first, then archive only after the local base branch is current.",
 }
 
 /**

@@ -79,7 +79,7 @@ function getTaskStatus(ctx) {
 
   if (taskStatus === "completed") {
     const dirName = basename(taskDir)
-    return `Status: COMPLETED\nTask: ${taskTitle}\nNext: Archive with \`python3 ./.trellis/scripts/task.py archive ${dirName}\` or start a new task`
+    return `Status: COMPLETED\nTask: ${taskTitle}\nNext: Run post-merge reconcile from \`.trellis/workflow.md\`, then archive with \`python3 ./.trellis/scripts/task.py archive ${dirName}\` only after the local base branch is current.`
   }
 
   let hasContext = false

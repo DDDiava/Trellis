@@ -148,7 +148,12 @@ def _get_task_status(trellis_dir: Path) -> str:
     task_status = task_data.get("status", "unknown")
 
     if task_status == "completed":
-        return f"Status: COMPLETED\nTask: {task_title}\nNext: Archive with `python3 ./.trellis/scripts/task.py archive {task_dir.name}` or start a new task"
+        return (
+            f"Status: COMPLETED\nTask: {task_title}\n"
+            "Next: Run post-merge reconcile from `.trellis/workflow.md`, then "
+            f"archive with `python3 ./.trellis/scripts/task.py archive {task_dir.name}` "
+            "only after the local base branch is current."
+        )
 
     has_context = False
     for jsonl_name in ("implement.jsonl", "check.jsonl", "spec.jsonl"):
