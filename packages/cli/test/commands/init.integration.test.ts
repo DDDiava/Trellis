@@ -35,6 +35,12 @@ import { execSync } from "node:child_process";
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
 
+const PRELUDE_HEADING = "Required: Load Trellis Context First";
+
+function countOccurrences(content: string, needle: string): number {
+  return content.split(needle).length - 1;
+}
+
 describe("init() integration", () => {
   let tmpDir: string;
 
@@ -165,6 +171,13 @@ describe("init() integration", () => {
         path.join(tmpDir, ".codex", "agents", "trellis-check.toml"),
       ),
     ).toBe(true);
+    for (const agent of ["trellis-implement.toml", "trellis-check.toml"]) {
+      const content = fs.readFileSync(
+        path.join(tmpDir, ".codex", "agents", agent),
+        "utf-8",
+      );
+      expect(countOccurrences(content, PRELUDE_HEADING)).toBe(1);
+    }
     // parallel skill removed — platform-native worktree features used instead
     expect(fs.existsSync(path.join(tmpDir, ".codex", "hooks.json"))).toBe(true);
     expect(

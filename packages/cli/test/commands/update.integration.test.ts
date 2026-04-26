@@ -37,6 +37,11 @@ import { computeHash } from "../../src/utils/template-hash.js";
 
 // A managed template file that update always handles (Python script)
 const MANAGED_FILE = `${PATHS.SCRIPTS}/get_context.py`;
+const PRELUDE_HEADING = "Required: Load Trellis Context First";
+
+function countOccurrences(content: string, needle: string): number {
+  return content.split(needle).length - 1;
+}
 
 /** Remove a key from a hash object (avoids eslint no-dynamic-delete) */
 function removeHashEntry(obj: Record<string, unknown>, key: string): Record<string, unknown> {
@@ -176,6 +181,60 @@ describe("update() integration", () => {
 
     // File should be auto-updated back to current template
     expect(fs.readFileSync(targetFull, "utf-8")).toBe(templateContent);
+  });
+
+  it("#4b codex update collapses tracked duplicate pull-based preludes", async () => {
+    await init({ yes: true, force: true, codex: true });
+
+    const agents = [
+      {
+        relativePath: ".codex/agents/trellis-implement.toml",
+        bodyMarker: "You are the Trellis implementer agent.",
+      },
+      {
+        relativePath: ".codex/agents/trellis-check.toml",
+        bodyMarker: "You are the Trellis reviewer agent.",
+      },
+    ];
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashes = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as Record<
+      string,
+      string
+    >;
+    const expectedCurrentContent = new Map<string, string>();
+
+    for (const { relativePath, bodyMarker } of agents) {
+      const fullPath = path.join(tmpDir, relativePath);
+      const currentContent = fs.readFileSync(fullPath, "utf-8");
+      const preludeStart = currentContent.indexOf(`## ${PRELUDE_HEADING}`);
+      const bodyStart = currentContent.indexOf(bodyMarker);
+
+      expect(preludeStart).toBeGreaterThanOrEqual(0);
+      expect(bodyStart).toBeGreaterThan(preludeStart);
+
+      const preludeBlock = currentContent.slice(preludeStart, bodyStart);
+      const duplicateContent =
+        currentContent.slice(0, bodyStart) +
+        preludeBlock +
+        currentContent.slice(bodyStart);
+
+      expectedCurrentContent.set(relativePath, currentContent);
+      fs.writeFileSync(fullPath, duplicateContent);
+      hashes[relativePath] = computeHash(duplicateContent);
+    }
+    fs.writeFileSync(hashFile, JSON.stringify(hashes, null, 2));
+
+    await update({ force: true });
+
+    for (const { relativePath } of agents) {
+      const content = fs.readFileSync(path.join(tmpDir, relativePath), "utf-8");
+      expect(countOccurrences(content, PRELUDE_HEADING)).toBe(1);
+      expect(content).toBe(expectedCurrentContent.get(relativePath));
+    }
   });
 
   it("#5 force overwrites user-modified files", async () => {

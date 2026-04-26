@@ -305,6 +305,16 @@ export async function writeSharedHooks(
 
 export type SubAgentType = "implement" | "check";
 
+const RE_PULL_BASED_PRELUDE_BLOCK =
+  /(^|\r?\n)?## Required: Load Trellis Context First\r?\n[\s\S]*?\r?\n---\r?\n(?:\r?\n)?/g;
+
+function stripExistingPullBasedPreludes(content: string): string {
+  return content.replace(
+    RE_PULL_BASED_PRELUDE_BLOCK,
+    (_match, prefix: string | undefined) => prefix ?? "",
+  );
+}
+
 /** Build the standard "load Trellis context first" prelude block. */
 export function buildPullBasedPrelude(agentType: SubAgentType): string {
   // JSONL filenames stay as implement.jsonl / check.jsonl — they are internal
@@ -336,10 +346,11 @@ export function injectPullBasedPreludeMarkdown(
   agentType: SubAgentType,
 ): string {
   const prelude = buildPullBasedPrelude(agentType);
-  const lines = content.split("\n");
+  const contentWithoutPrelude = stripExistingPullBasedPreludes(content);
+  const lines = contentWithoutPrelude.split("\n");
 
   if (lines[0] !== "---") {
-    return prelude + content;
+    return prelude + contentWithoutPrelude;
   }
   // Find closing frontmatter
   let close = -1;
@@ -350,7 +361,7 @@ export function injectPullBasedPreludeMarkdown(
     }
   }
   if (close === -1) {
-    return prelude + content;
+    return prelude + contentWithoutPrelude;
   }
   const head = lines.slice(0, close + 1).join("\n");
   const tail = lines.slice(close + 1).join("\n");
@@ -365,12 +376,13 @@ export function injectPullBasedPreludeToml(
   agentType: SubAgentType,
 ): string {
   const prelude = buildPullBasedPrelude(agentType);
+  const contentWithoutPrelude = stripExistingPullBasedPreludes(content);
   // Match: developer_instructions = """  followed by newline
   const re = /(developer_instructions\s*=\s*""")(\r?\n)/;
-  if (!re.test(content)) {
-    return content;
+  if (!re.test(contentWithoutPrelude)) {
+    return contentWithoutPrelude;
   }
-  return content.replace(re, `$1$2${prelude}`);
+  return contentWithoutPrelude.replace(re, `$1$2${prelude}`);
 }
 
 /** Best-effort detect agent type from filename ("trellis-implement.md" → "implement").

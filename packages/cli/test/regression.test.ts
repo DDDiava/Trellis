@@ -62,6 +62,12 @@ import {
 import * as markdownExports from "../src/templates/markdown/index.js";
 import { TrellisContext } from "../src/templates/opencode/lib/trellis-context.js";
 
+const PRELUDE_HEADING = "Required: Load Trellis Context First";
+
+function countOccurrences(content: string, needle: string): number {
+  return content.split(needle).length - 1;
+}
+
 afterEach(() => {
   clearManifestCache();
 });
@@ -2808,6 +2814,7 @@ describe("regression: class-2 platforms use pull-based sub-agent context", () =>
         for (const file of preludeAgents) {
           const content = fs.readFileSync(path.join(tmpDir, file), "utf-8");
           expect(content).toContain("Required: Load Trellis Context First");
+          expect(countOccurrences(content, PRELUDE_HEADING)).toBe(1);
           expect(content).toContain(".trellis/.current-task");
         }
       });
@@ -2878,6 +2885,7 @@ describe("regression: pi uses TypeScript extension assets instead of Python hook
         "utf-8",
       );
       expect(content).toContain("Required: Load Trellis Context First");
+      expect(countOccurrences(content, PRELUDE_HEADING)).toBe(1);
       expect(content).toContain(".trellis/.current-task");
     }
   });

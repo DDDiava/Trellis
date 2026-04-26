@@ -14,6 +14,12 @@ import {
 } from "../../src/configurators/index.js";
 import { AI_TOOLS } from "../../src/types/ai-tools.js";
 
+const PRELUDE_HEADING = "Required: Load Trellis Context First";
+
+function countOccurrences(content: string, needle: string): number {
+  return content.split(needle).length - 1;
+}
+
 // =============================================================================
 // Derived Constants
 // =============================================================================
@@ -349,6 +355,60 @@ describe("collectPlatformTemplates", () => {
     expect(result?.has(".github/prompts/continue.prompt.md")).toBe(true);
     expect(result?.has(".github/copilot/hooks.json")).toBe(true);
     expect(result?.has(".github/hooks/trellis.json")).toBe(true);
+  });
+
+  it("pull-based collectTemplates keeps one prelude in implement/check agents", () => {
+    const cases = [
+      {
+        platform: "codex" as const,
+        agents: [
+          ".codex/agents/trellis-implement.toml",
+          ".codex/agents/trellis-check.toml",
+        ],
+      },
+      {
+        platform: "gemini" as const,
+        agents: [
+          ".gemini/agents/trellis-implement.md",
+          ".gemini/agents/trellis-check.md",
+        ],
+      },
+      {
+        platform: "qoder" as const,
+        agents: [
+          ".qoder/agents/trellis-implement.md",
+          ".qoder/agents/trellis-check.md",
+        ],
+      },
+      {
+        platform: "copilot" as const,
+        agents: [
+          ".github/agents/trellis-implement.agent.md",
+          ".github/agents/trellis-check.agent.md",
+        ],
+      },
+      {
+        platform: "pi" as const,
+        agents: [
+          ".pi/agents/trellis-implement.md",
+          ".pi/agents/trellis-check.md",
+        ],
+      },
+    ];
+
+    for (const { platform, agents } of cases) {
+      const result = collectPlatformTemplates(platform);
+      expect(result).toBeInstanceOf(Map);
+
+      for (const agent of agents) {
+        const content = result?.get(agent);
+        expect(content).toBeDefined();
+        if (!content) {
+          throw new Error(`Expected ${agent} in ${platform} templates`);
+        }
+        expect(countOccurrences(content, PRELUDE_HEADING)).toBe(1);
+      }
+    }
   });
 
   it("pi collectTemplates includes prompts, agents, extension, and settings", () => {

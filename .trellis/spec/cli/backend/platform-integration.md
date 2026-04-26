@@ -718,6 +718,8 @@ Pull-based prelude is injected by `injectPullBasedPreludeMarkdown()` / `injectPu
 1. Calls `writeSharedHooks(dir, { exclude: ["inject-subagent-context.py"] })` — no inject hook installed
 2. Calls `detectSubAgentType(name)` → `injectPullBasedPrelude*()` on every sub-agent definition before writing
 
+The injector is intentionally idempotent: before adding the canonical prelude, it strips any existing `## Required: Load Trellis Context First` block ending at the following `---` separator. This keeps generated agents at exactly one prelude even if a native platform template already includes it. Fresh-init and `collectPlatformTemplates()` tests must count occurrences for implement/check agents, not just assert that the heading exists.
+
 Hook-inject platforms keep using `writeSharedHooks(dir)` and their hook-config JSON references `inject-subagent-context.py` as before.
 
 Extension-backed platforms must not call `writeSharedHooks()` for their config directory. They generate platform-native extension files and tests must assert that no Python hook files are installed under the platform config root.

@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPullBasedPrelude,
   getPythonCommandForPlatform,
+  injectPullBasedPreludeMarkdown,
+  injectPullBasedPreludeToml,
   resolvePlaceholders,
 } from "../../src/configurators/shared.js";
 import type { TemplateContext } from "../../src/types/ai-tools.js";
+
+const PRELUDE_HEADING = "Required: Load Trellis Context First";
+
+function countOccurrences(content: string, needle: string): number {
+  return content.split(needle).length - 1;
+}
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -327,5 +336,47 @@ describe("resolvePlaceholders", () => {
       const input = "{{UNKNOWN}} and {{#UNKNOWN_FLAG}}x{{/UNKNOWN_FLAG}}";
       expect(resolvePlaceholders(input, claudeCtx)).toBe(input);
     });
+  });
+});
+
+describe("pull-based prelude injection", () => {
+  it("keeps TOML agent prelude injection idempotent", () => {
+    const prelude = buildPullBasedPrelude("implement");
+    const input = [
+      'name = "trellis-implement"',
+      'developer_instructions = """',
+      prelude,
+      prelude,
+      "You are the Trellis implementer agent.",
+      '"""',
+      "",
+    ].join("\n");
+
+    const result = injectPullBasedPreludeToml(input, "implement");
+
+    expect(countOccurrences(result, PRELUDE_HEADING)).toBe(1);
+    expect(result).toContain("You are the Trellis implementer agent.");
+    expect(result.indexOf(PRELUDE_HEADING)).toBeLessThan(
+      result.indexOf("You are the Trellis implementer agent."),
+    );
+  });
+
+  it("keeps Markdown agent prelude injection idempotent after frontmatter", () => {
+    const prelude = buildPullBasedPrelude("check");
+    const input = [
+      "---",
+      "name: trellis-check",
+      "---",
+      "",
+      prelude,
+      "You are the Trellis reviewer agent.",
+      "",
+    ].join("\n");
+
+    const result = injectPullBasedPreludeMarkdown(input, "check");
+
+    expect(countOccurrences(result, PRELUDE_HEADING)).toBe(1);
+    expect(result).toMatch(/^---\nname: trellis-check\n---\n\n## Required:/);
+    expect(result).toContain("You are the Trellis reviewer agent.");
   });
 });

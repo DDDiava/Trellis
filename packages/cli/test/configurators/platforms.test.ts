@@ -32,6 +32,12 @@ import {
   wrapWithCommandFrontmatter,
 } from "../../src/configurators/shared.js";
 
+const PRELUDE_HEADING = "Required: Load Trellis Context First";
+
+function countOccurrences(content: string, needle: string): number {
+  return content.split(needle).length - 1;
+}
+
 // =============================================================================
 // getConfiguredPlatforms — detects existing platform directories
 // =============================================================================
@@ -246,16 +252,14 @@ describe("configurePlatform", () => {
       );
       if (needsPrelude) {
         expect(written).toContain("Required: Load Trellis Context First");
+        expect(countOccurrences(written, PRELUDE_HEADING)).toBe(1);
         expect(written).toContain(".trellis/.current-task");
         // Original body must still be present (prepend, not replace)
-        const originalBody = agent.content
-          .split("developer_instructions")[1]
-          ?.split('"""')[1]
-          ?.trim()
-          .split("\n")[0];
-        if (originalBody) {
-          expect(written).toContain(originalBody);
-        }
+        const bodyMarker =
+          agent.name === "trellis-check"
+            ? "You are the Trellis reviewer agent."
+            : "You are the Trellis implementer agent.";
+        expect(written).toContain(bodyMarker);
       } else {
         expect(written).toBe(agent.content);
       }
