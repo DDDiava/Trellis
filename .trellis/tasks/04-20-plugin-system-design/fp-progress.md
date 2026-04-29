@@ -6,4 +6,3 @@
 - [x] Phase 3: Ground Truths — 5 ground truths
 - [x] Phase 4: Reason Upward — three-layer storage model
 - [x] Phase 5: Validate — pre-mortem applied
-
