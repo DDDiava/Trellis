@@ -28,8 +28,9 @@ vi.mock("node:child_process", () => ({
 
 import { init } from "../../src/commands/init.js";
 import { VERSION } from "../../src/constants/version.js";
-import { DIR_NAMES, PATHS } from "../../src/constants/paths.js";
+import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
 import { collectPlatformTemplates } from "../../src/configurators/index.js";
+import { computeHash } from "../../src/utils/template-hash.js";
 import { execSync } from "node:child_process";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -62,6 +63,7 @@ describe("init() integration", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -94,6 +96,40 @@ describe("init() integration", () => {
 
     // Root files
     expect(fs.existsSync(path.join(tmpDir, "AGENTS.md"))).toBe(true);
+
+    // Built-in multi-file skill is installed for default platforms.
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".claude", "skills", "trellis-meta", "SKILL.md"),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(
+          tmpDir,
+          ".cursor",
+          "skills",
+          "trellis-meta",
+          "references",
+          "local-architecture",
+          "overview.md",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("#1b does not print the promotional pain-point block", async () => {
+    await init({ yes: true });
+
+    const logOutput = vi
+      .mocked(console.log)
+      .mock.calls.flat()
+      .filter((part): part is string => typeof part === "string")
+      .join("\n");
+
+    expect(logOutput).not.toContain("Sound familiar?");
+    expect(logOutput).not.toContain("You'll never say these again!!");
+    expect(logOutput).not.toContain("Wrote CLAUDE.md, AI ignored it");
   });
 
   it("#2 single platform creates only that platform directory", async () => {
@@ -115,6 +151,11 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(tmpDir, ".github", "copilot"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".factory"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".pi"))).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".claude", "skills", "trellis-meta", "SKILL.md"),
+      ),
+    ).toBe(true);
   });
 
   it("#3 multi platform creates all selected platform directories", async () => {
@@ -163,6 +204,29 @@ describe("init() integration", () => {
         path.join(tmpDir, ".agents", "skills", "trellis-continue", "SKILL.md"),
       ),
     ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".agents", "skills", "trellis-meta", "SKILL.md"),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(
+          tmpDir,
+          ".agents",
+          "skills",
+          "trellis-meta",
+          "references",
+          "local-architecture",
+          "overview.md",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".codex", "skills", "trellis-meta", "SKILL.md"),
+      ),
+    ).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".codex", "config.toml"))).toBe(
       true,
     );
@@ -186,6 +250,22 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".gemini"))).toBe(false);
+
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashesFile = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as {
+      __version?: number;
+      hashes?: Record<string, string>;
+    };
+    const hashes = hashesFile.hashes ?? {};
+    const trackedPaths = Object.keys(hashes).map((p) => p.replace(/\\/g, "/"));
+    expect(trackedPaths).toContain(".agents/skills/trellis-meta/SKILL.md");
+    expect(trackedPaths).toContain(
+      ".agents/skills/trellis-meta/references/local-architecture/overview.md",
+    );
   });
 
   it("#3c kiro platform creates .kiro/skills", async () => {
@@ -332,10 +412,11 @@ describe("init() integration", () => {
       DIR_NAMES.WORKFLOW,
       ".template-hashes.json",
     );
-    const hashes = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as Record<
-      string,
-      string
-    >;
+    const hashesFile = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as {
+      __version?: number;
+      hashes?: Record<string, string>;
+    };
+    const hashes = hashesFile.hashes ?? {};
     const trackedPaths = Object.keys(hashes).map((p) => p.replace(/\\/g, "/"));
     expect(trackedPaths).not.toContain(".github/prompts/start.prompt.md");
     expect(trackedPaths).toContain(".github/prompts/finish-work.prompt.md");
@@ -437,10 +518,11 @@ describe("init() integration", () => {
       DIR_NAMES.WORKFLOW,
       ".template-hashes.json",
     );
-    const hashes = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as Record<
-      string,
-      string
-    >;
+    const hashesFile = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as {
+      __version?: number;
+      hashes?: Record<string, string>;
+    };
+    const hashes = hashesFile.hashes ?? {};
     const trackedPaths = Object.keys(hashes).map((p) => p.replace(/\\/g, "/"));
     const piTemplates = collectPlatformTemplates("pi");
     expect(piTemplates).toBeInstanceOf(Map);
@@ -585,7 +667,15 @@ describe("init() integration", () => {
       ".template-hashes.json",
     );
     expect(fs.existsSync(hashPath)).toBe(true);
-    const hashes = JSON.parse(fs.readFileSync(hashPath, "utf-8"));
+    const hashesFile = JSON.parse(fs.readFileSync(hashPath, "utf-8")) as {
+      hashes?: Record<string, string>;
+    };
+    const hashes = hashesFile.hashes ?? {};
+    const agentsContent = fs.readFileSync(
+      path.join(tmpDir, FILE_NAMES.AGENTS),
+      "utf-8",
+    );
+    expect(hashes[FILE_NAMES.AGENTS]).toBe(computeHash(agentsContent));
     expect(Object.keys(hashes).length).toBeGreaterThan(0);
   });
 
@@ -805,6 +895,24 @@ describe("init() integration", () => {
     expect(guideCall).toBeDefined();
 
     // Should NOT create .trellis/ (early return)
+    expect(fs.existsSync(path.join(tmpDir, DIR_NAMES.WORKFLOW))).toBe(false);
+  });
+
+  it("#20 -y --registry aborts on probe failure instead of direct download fallback", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+
+    await init({
+      yes: true,
+      registry: "bitbucket:myorg/registry/spec",
+    });
+
+    const logOutput = vi
+      .mocked(console.log)
+      .mock.calls.flat()
+      .filter((part): part is string => typeof part === "string")
+      .join("\n");
+
+    expect(logOutput).toContain("Error: Could not reach registry index");
     expect(fs.existsSync(path.join(tmpDir, DIR_NAMES.WORKFLOW))).toBe(false);
   });
 

@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import inquirer from "inquirer";
 
 // === External dependency mocks (hoisted by vitest) ===
 
@@ -32,7 +33,7 @@ vi.mock("node:child_process", () => ({
 import { init } from "../../src/commands/init.js";
 import { update } from "../../src/commands/update.js";
 import { VERSION } from "../../src/constants/version.js";
-import { DIR_NAMES, PATHS } from "../../src/constants/paths.js";
+import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
 import { computeHash } from "../../src/utils/template-hash.js";
 
 // A managed template file that update always handles (Python script)
@@ -44,8 +45,40 @@ function countOccurrences(content: string, needle: string): number {
 }
 
 /** Remove a key from a hash object (avoids eslint no-dynamic-delete) */
-function removeHashEntry(obj: Record<string, unknown>, key: string): Record<string, unknown> {
+function removeHashEntry(
+  obj: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => k !== key));
+}
+
+/**
+ * Read the v2 hashes file and return the inner `hashes` map.
+ * Tests manipulate this map then write it back via `writeHashesV2`.
+ */
+function readHashesV2(hashFile: string): Record<string, string> {
+  const raw = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as {
+    __version?: number;
+    hashes?: Record<string, string>;
+  };
+  return raw.hashes ?? {};
+}
+
+/** Write a v2-shaped hashes file. */
+function writeHashesV2(hashFile: string, hashes: Record<string, string>): void {
+  fs.writeFileSync(hashFile, JSON.stringify({ __version: 2, hashes }, null, 2));
+}
+
+function removeSubagentsSection(content: string): string {
+  return content.replace(
+    "\n## Subagents\n\n" +
+      "- ALWAYS wait for all subagents to complete before yielding.\n" +
+      "- Spawn subagents automatically when:\n" +
+      "  - Parallelizable work (e.g., install + verify, npm test + typecheck, multiple tasks from plan)\n" +
+      "  - Long-running or blocking tasks where a worker can run independently.\n" +
+      "  - Isolation for risky changes or checks\n",
+    "",
+  );
 }
 
 describe("update() integration", () => {
@@ -88,7 +121,11 @@ describe("update() integration", () => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) walk(full);
-        else snapshotBefore.set(path.relative(tmpDir, full), fs.readFileSync(full, "utf-8"));
+        else
+          snapshotBefore.set(
+            path.relative(tmpDir, full),
+            fs.readFileSync(full, "utf-8"),
+          );
       }
     };
     walk(tmpDir);
@@ -101,14 +138,22 @@ describe("update() integration", () => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) walk2(full);
-        else snapshotAfter.set(path.relative(tmpDir, full), fs.readFileSync(full, "utf-8"));
+        else
+          snapshotAfter.set(
+            path.relative(tmpDir, full),
+            fs.readFileSync(full, "utf-8"),
+          );
       }
     };
     walk2(tmpDir);
 
     // No files added or removed
-    const addedFiles = [...snapshotAfter.keys()].filter((k) => !snapshotBefore.has(k));
-    const removedFiles = [...snapshotBefore.keys()].filter((k) => !snapshotAfter.has(k));
+    const addedFiles = [...snapshotAfter.keys()].filter(
+      (k) => !snapshotBefore.has(k),
+    );
+    const removedFiles = [...snapshotBefore.keys()].filter(
+      (k) => !snapshotAfter.has(k),
+    );
     expect(addedFiles).toEqual([]);
     expect(removedFiles).toEqual([]);
 
@@ -131,9 +176,16 @@ describe("update() integration", () => {
 
     // Delete hash + file to simulate a truly new template file
     const target = path.join(tmpDir, MANAGED_FILE);
-    const hashFile = path.join(tmpDir, DIR_NAMES.WORKFLOW, ".template-hashes.json");
-    const hashes = removeHashEntry(JSON.parse(fs.readFileSync(hashFile, "utf-8")), MANAGED_FILE);
-    fs.writeFileSync(hashFile, JSON.stringify(hashes, null, 2));
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashes = removeHashEntry(
+      readHashesV2(hashFile),
+      MANAGED_FILE,
+    ) as Record<string, string>;
+    writeHashesV2(hashFile, hashes);
     fs.unlinkSync(target);
 
     await update({ dryRun: true });
@@ -172,10 +224,14 @@ describe("update() integration", () => {
     const oldContent = "# Old version of script\n";
     fs.writeFileSync(targetFull, oldContent);
 
-    const hashFile = path.join(tmpDir, DIR_NAMES.WORKFLOW, ".template-hashes.json");
-    const hashes = JSON.parse(fs.readFileSync(hashFile, "utf-8"));
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashes = readHashesV2(hashFile);
     hashes[targetRelative] = computeHash(oldContent);
-    fs.writeFileSync(hashFile, JSON.stringify(hashes, null, 2));
+    writeHashesV2(hashFile, hashes);
 
     await update({ force: true });
 
@@ -196,15 +252,13 @@ describe("update() integration", () => {
         bodyMarker: "You are the Trellis reviewer agent.",
       },
     ];
+
     const hashFile = path.join(
       tmpDir,
       DIR_NAMES.WORKFLOW,
       ".template-hashes.json",
     );
-    const hashes = JSON.parse(fs.readFileSync(hashFile, "utf-8")) as Record<
-      string,
-      string
-    >;
+    const hashes = readHashesV2(hashFile);
     const expectedCurrentContent = new Map<string, string>();
 
     for (const { relativePath, bodyMarker } of agents) {
@@ -226,7 +280,7 @@ describe("update() integration", () => {
       fs.writeFileSync(fullPath, duplicateContent);
       hashes[relativePath] = computeHash(duplicateContent);
     }
-    fs.writeFileSync(hashFile, JSON.stringify(hashes, null, 2));
+    writeHashesV2(hashFile, hashes);
 
     await update({ force: true });
 
@@ -235,6 +289,93 @@ describe("update() integration", () => {
       expect(countOccurrences(content, PRELUDE_HEADING)).toBe(1);
       expect(content).toBe(expectedCurrentContent.get(relativePath));
     }
+  });
+
+  it("#4c auto-updates legacy untracked AGENTS.md and preserves outside content", async () => {
+    await setupProject();
+
+    const targetRelative = FILE_NAMES.AGENTS;
+    const targetFull = path.join(tmpDir, targetRelative);
+    const templateContent = fs.readFileSync(targetFull, "utf-8");
+    const oldContent = removeSubagentsSection(templateContent);
+    const existingContent = `# Local instructions\n\n${oldContent}\n\n## Project Notes\n\nKeep this.`;
+    const expectedContent = `# Local instructions\n\n${templateContent}\n\n## Project Notes\n\nKeep this.`;
+
+    fs.writeFileSync(targetFull, existingContent);
+
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashes = removeHashEntry(
+      readHashesV2(hashFile),
+      targetRelative,
+    ) as Record<string, string>;
+    writeHashesV2(hashFile, hashes);
+
+    await update({});
+
+    expect(fs.readFileSync(targetFull, "utf-8")).toBe(expectedContent);
+    expect(readHashesV2(hashFile)[targetRelative]).toBe(
+      computeHash(expectedContent),
+    );
+  });
+
+  it("#4d preserves user-modified untracked AGENTS.md managed block", async () => {
+    await setupProject();
+
+    const targetRelative = FILE_NAMES.AGENTS;
+    const targetFull = path.join(tmpDir, targetRelative);
+    const templateContent = fs.readFileSync(targetFull, "utf-8");
+    const modifiedOldContent = removeSubagentsSection(templateContent).replace(
+      "# Trellis Instructions",
+      "# Custom Trellis Instructions",
+    );
+    fs.writeFileSync(targetFull, modifiedOldContent);
+
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashes = removeHashEntry(
+      readHashesV2(hashFile),
+      targetRelative,
+    ) as Record<string, string>;
+    writeHashesV2(hashFile, hashes);
+
+    await update({ skipAll: true });
+
+    expect(fs.readFileSync(targetFull, "utf-8")).toBe(modifiedOldContent);
+  });
+
+  it("#4e preserves user AGENTS.md without TRELLIS markers by appending the managed block", async () => {
+    await setupProject();
+
+    const targetRelative = FILE_NAMES.AGENTS;
+    const targetFull = path.join(tmpDir, targetRelative);
+    const templateContent = fs.readFileSync(targetFull, "utf-8");
+
+    // User has a hand-written AGENTS.md with no TRELLIS:START/END markers at
+    // all (predates 0.5.0-beta.18 or was authored by hand). Pre-fix behavior
+    // would clobber this content; post-fix should append the managed block.
+    const userContent = "# Project notes\n\nThings the team agreed on.\n";
+    fs.writeFileSync(targetFull, userContent);
+
+    await update({ force: true });
+
+    const result = fs.readFileSync(targetFull, "utf-8");
+    expect(result).toContain("# Project notes");
+    expect(result).toContain("Things the team agreed on.");
+    expect(result).toContain("<!-- TRELLIS:START -->");
+    expect(result).toContain("<!-- TRELLIS:END -->");
+    // Managed block should sit AFTER the user content, not replace it.
+    expect(result.indexOf("# Project notes")).toBeLessThan(
+      result.indexOf("<!-- TRELLIS:START -->"),
+    );
+    // Tail equals the canonical template (force-applied managed block).
+    expect(result.endsWith(templateContent.trimEnd() + "\n")).toBe(true);
   });
 
   it("#5 force overwrites user-modified files", async () => {
@@ -251,6 +392,18 @@ describe("update() integration", () => {
     expect(fs.readFileSync(targetFull, "utf-8")).toBe(templateContent);
   });
 
+  it("#5b force mode does not prompt for final confirmation", async () => {
+    await setupProject();
+
+    const targetFull = path.join(tmpDir, MANAGED_FILE);
+    fs.writeFileSync(targetFull, "user customized content");
+    vi.mocked(inquirer.prompt).mockClear();
+
+    await update({ force: true });
+
+    expect(inquirer.prompt).not.toHaveBeenCalled();
+  });
+
   it("#6 skipAll preserves user-modified files", async () => {
     await setupProject();
 
@@ -259,7 +412,9 @@ describe("update() integration", () => {
 
     await update({ skipAll: true });
 
-    expect(fs.readFileSync(targetFull, "utf-8")).toBe("user customized content");
+    expect(fs.readFileSync(targetFull, "utf-8")).toBe(
+      "user customized content",
+    );
   });
 
   it("#7 createNew creates .new copy without overwriting original", async () => {
@@ -272,7 +427,9 @@ describe("update() integration", () => {
     await update({ createNew: true });
 
     // Original preserved
-    expect(fs.readFileSync(targetFull, "utf-8")).toBe("user customized content");
+    expect(fs.readFileSync(targetFull, "utf-8")).toBe(
+      "user customized content",
+    );
     // .new file created with template content
     const newFile = targetFull + ".new";
     expect(fs.existsSync(newFile)).toBe(true);
@@ -300,10 +457,14 @@ describe("update() integration", () => {
     const targetFull = path.join(tmpDir, MANAGED_FILE);
     const oldContent = "# Old version of script\n";
     fs.writeFileSync(targetFull, oldContent);
-    const hashFile = path.join(tmpDir, DIR_NAMES.WORKFLOW, ".template-hashes.json");
-    const hashes = JSON.parse(fs.readFileSync(hashFile, "utf-8"));
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashes = readHashesV2(hashFile);
     hashes[MANAGED_FILE] = computeHash(oldContent);
-    fs.writeFileSync(hashFile, JSON.stringify(hashes, null, 2));
+    writeHashesV2(hashFile, hashes);
 
     await update({ force: true });
 
@@ -333,9 +494,16 @@ describe("update() integration", () => {
 
     // Remove hash entry + file to simulate a truly new template file
     const target = path.join(tmpDir, MANAGED_FILE);
-    const hashFile = path.join(tmpDir, DIR_NAMES.WORKFLOW, ".template-hashes.json");
-    const hashes = removeHashEntry(JSON.parse(fs.readFileSync(hashFile, "utf-8")), MANAGED_FILE);
-    fs.writeFileSync(hashFile, JSON.stringify(hashes, null, 2));
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashes = removeHashEntry(
+      readHashesV2(hashFile),
+      MANAGED_FILE,
+    ) as Record<string, string>;
+    writeHashesV2(hashFile, hashes);
     fs.unlinkSync(target);
 
     await update({ allowDowngrade: true, force: true });
@@ -392,12 +560,19 @@ describe("update() integration", () => {
     await setupProject();
 
     // The hash file should exist
-    const hashFile = path.join(tmpDir, DIR_NAMES.WORKFLOW, ".template-hashes.json");
-    const hashes = removeHashEntry(JSON.parse(fs.readFileSync(hashFile, "utf-8")), MANAGED_FILE);
+    const hashFile = path.join(
+      tmpDir,
+      DIR_NAMES.WORKFLOW,
+      ".template-hashes.json",
+    );
+    const hashes = removeHashEntry(
+      readHashesV2(hashFile),
+      MANAGED_FILE,
+    ) as Record<string, string>;
 
     // Remove a hash entry AND the file (simulates a truly new template)
     const targetPath = path.join(tmpDir, MANAGED_FILE);
-    fs.writeFileSync(hashFile, JSON.stringify(hashes, null, 2));
+    writeHashesV2(hashFile, hashes);
     fs.unlinkSync(targetPath);
 
     // Run update
@@ -416,7 +591,10 @@ describe("update() integration", () => {
     // Add skip config
     const configPath = path.join(tmpDir, DIR_NAMES.WORKFLOW, "config.yaml");
     const configContent = fs.readFileSync(configPath, "utf-8");
-    fs.writeFileSync(configPath, configContent + `\nupdate:\n  skip:\n    - ${MANAGED_FILE}\n`);
+    fs.writeFileSync(
+      configPath,
+      configContent + `\nupdate:\n  skip:\n    - ${MANAGED_FILE}\n`,
+    );
 
     // Modify the file so it would normally trigger a change
     fs.writeFileSync(targetPath, "# modified by user\n");
@@ -435,7 +613,10 @@ describe("update() integration", () => {
     const configPath = path.join(tmpDir, DIR_NAMES.WORKFLOW, "config.yaml");
     const configContent = fs.readFileSync(configPath, "utf-8");
     const skipDir = `${PATHS.SCRIPTS}/common/`;
-    fs.writeFileSync(configPath, configContent + `\nupdate:\n  skip:\n    - ${skipDir}\n`);
+    fs.writeFileSync(
+      configPath,
+      configContent + `\nupdate:\n  skip:\n    - ${skipDir}\n`,
+    );
 
     // Modify a file under the skipped directory
     const targetPath = path.join(tmpDir, PATHS.SCRIPTS, "common", "paths.py");
@@ -446,7 +627,9 @@ describe("update() integration", () => {
     await update({ force: true });
 
     // File should NOT be overwritten (its directory is in skip list)
-    expect(fs.readFileSync(targetPath, "utf-8")).toBe("# user modified paths.py\n");
+    expect(fs.readFileSync(targetPath, "utf-8")).toBe(
+      "# user modified paths.py\n",
+    );
   });
 
   it("#18 safe-file-delete preserves user-modified deprecated file", async () => {
@@ -457,7 +640,8 @@ describe("update() integration", () => {
     const deprecatedDir = path.join(tmpDir, ".claude", "commands", "trellis");
     fs.mkdirSync(deprecatedDir, { recursive: true });
     const deprecatedFile = path.join(deprecatedDir, "before-backend-dev.md");
-    const userContent = "# My customized before-backend-dev command\nUser edited this.\n";
+    const userContent =
+      "# My customized before-backend-dev command\nUser edited this.\n";
     fs.writeFileSync(deprecatedFile, userContent);
 
     await update({ force: true });
@@ -529,7 +713,9 @@ describe("update() integration", () => {
 
     // File should be preserved (directory is in update.skip, overriding safe-file-delete)
     expect(fs.existsSync(deprecatedFile)).toBe(true);
-    expect(fs.readFileSync(deprecatedFile, "utf-8")).toBe(ORIGINAL_CHECK_BACKEND_CONTENT);
+    expect(fs.readFileSync(deprecatedFile, "utf-8")).toBe(
+      ORIGINAL_CHECK_BACKEND_CONTENT,
+    );
   });
 
   it("#21 safe-file-delete deletes file when hash matches allowed_hashes", async () => {
@@ -552,6 +738,38 @@ describe("update() integration", () => {
     expect(fs.existsSync(deprecatedFile)).toBe(false);
   });
 
+  it("#22 preserves existing Claude statusLine config and hook file on update", async () => {
+    await init({ yes: true, force: true, claude: true });
+
+    const settingsPath = path.join(tmpDir, ".claude", "settings.json");
+    const statusLinePath = path.join(
+      tmpDir,
+      ".claude",
+      "hooks",
+      "statusline.py",
+    );
+    const statusLineConfig = {
+      type: "command",
+      command: "python3 .claude/hooks/statusline.py",
+    };
+
+    const settings = JSON.parse(
+      fs.readFileSync(settingsPath, "utf-8"),
+    ) as Record<string, unknown>;
+    settings.statusLine = statusLineConfig;
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    fs.writeFileSync(statusLinePath, "# existing local statusline\n");
+
+    await update({ force: true });
+
+    expect(fs.existsSync(statusLinePath)).toBe(true);
+    const updatedSettings = JSON.parse(
+      fs.readFileSync(settingsPath, "utf-8"),
+    ) as Record<string, unknown>;
+    expect(updatedSettings.statusLine).toEqual(statusLineConfig);
+    expect(updatedSettings.hooks).toBeDefined();
+  });
+
   // --- Breaking-change migration gate (v0.5.0-beta.0+) ---
   // Gate: if upgrading from a version that spans a breaking manifest with
   // recommendMigrate=true, `update` must be invoked with --migrate (or --dry-run
@@ -571,10 +789,10 @@ describe("update() integration", () => {
   /** Delete the post-init target so classifyMigrations hits the "new doesn't exist"
    *  branch and respects `isTemplateModified` on the source (→ confirm bucket). */
   function clearMigrationTarget(): void {
-    fs.rmSync(
-      path.join(tmpDir, ".claude/skills/trellis-before-dev"),
-      { recursive: true, force: true },
-    );
+    fs.rmSync(path.join(tmpDir, ".claude/skills/trellis-before-dev"), {
+      recursive: true,
+      force: true,
+    });
   }
 
   it("#22 breaking-change gate exits 1 when --migrate is missing", async () => {
@@ -628,7 +846,9 @@ describe("update() integration", () => {
   /** Install a mock that returns a specific migration choice for the per-file prompt
    *  and {proceed: true} for the top-level confirm. Resolves the flakiness of
    *  matching on `name` field in the dynamic import path. */
-  async function installChoiceMock(choice: "rename" | "backup-rename" | "skip") {
+  async function installChoiceMock(
+    choice: "rename" | "backup-rename" | "skip",
+  ) {
     const inquirer = (await import("inquirer")).default;
     vi.mocked(inquirer.prompt).mockImplementation(((questions: unknown) => {
       const q = Array.isArray(questions) ? questions[0] : questions;
@@ -726,11 +946,11 @@ describe("update() integration", () => {
       DIR_NAMES.WORKFLOW,
       backupDirs[0] as string,
     );
-    expect(fs.existsSync(path.join(backupDir, ".opencode", "package.json"))).toBe(
-      true,
-    );
-    expect(fs.existsSync(path.join(backupDir, ".opencode", "node_modules"))).toBe(
-      false,
-    );
+    expect(
+      fs.existsSync(path.join(backupDir, ".opencode", "package.json")),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(backupDir, ".opencode", "node_modules")),
+    ).toBe(false);
   });
 });

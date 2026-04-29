@@ -7,6 +7,8 @@ import {
   resolvePlaceholders,
   resolveCommands,
   resolveSkills,
+  resolveBundledSkills,
+  writeSkills,
   writeSharedHooks,
 } from "./shared.js";
 
@@ -75,7 +77,7 @@ export async function configureClaude(cwd: string): Promise<void> {
   await copyDirFiltered(sourcePath, destPath, ["commands", "hooks"]);
 
   // Shared hook scripts (same source as 7 other platforms)
-  await writeSharedHooks(path.join(destPath, "hooks"));
+  await writeSharedHooks(path.join(destPath, "hooks"), "claude");
 
   // start + finish-work as slash commands
   const commandsDir = path.join(destPath, "commands", "trellis");
@@ -84,12 +86,10 @@ export async function configureClaude(cwd: string): Promise<void> {
     await writeFile(path.join(commandsDir, `${cmd.name}.md`), cmd.content);
   }
 
-  // Other 5 as skills with trellis- prefix
-  const skillsDir = path.join(destPath, "skills");
-  ensureDir(skillsDir);
-  for (const skill of resolveSkills(ctx)) {
-    const skillDir = path.join(skillsDir, skill.name);
-    ensureDir(skillDir);
-    await writeFile(path.join(skillDir, "SKILL.md"), skill.content);
-  }
+  // Auto-trigger workflow skills + multi-file built-in skills.
+  await writeSkills(
+    path.join(destPath, "skills"),
+    resolveSkills(ctx),
+    resolveBundledSkills(ctx),
+  );
 }

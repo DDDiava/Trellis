@@ -1,111 +1,251 @@
-# Claude Code Script Reference
+# Claude Code Scripts
 
-Claude Code uses the same Trellis task scripts as every other platform. Current PR-first work is coordinated through `task.py` and shared helpers, not through the removed `multi_agent/` directory.
+Scripts that require Claude Code CLI and hook system.
 
 ---
 
-## Current Script Surface
+## Overview
+
+These scripts require:
+- `claude` CLI command
+- Hook system for context injection
+- `--resume` for session persistence
 
 ```
 .trellis/scripts/
-├── get_context.py
-├── init_developer.py
-├── get_developer.py
-├── add_session.py
-├── task.py
-└── common/
-    ├── cli_adapter.py
-    ├── config.py
-    ├── developer.py
-    ├── git.py
-    ├── io.py
-    ├── log.py
-    ├── packages_context.py
-    ├── paths.py
-    ├── session_context.py
-    ├── task_context.py
-    ├── task_pr.py
-    ├── task_queue.py
-    ├── task_store.py
-    ├── task_utils.py
-    ├── tasks.py
-    ├── types.py
-    └── workflow_phase.py
+├── common/
+│   ├── worktree.py         # Worktree utilities
+│   └── registry.py         # Agent registry
+│
+└── multi_agent/            # Multi-Session scripts
+    ├── plan.py             # Launch Plan agent
+    ├── start.py            # Start worktree agent
+    ├── status.py           # Monitor agents
+    ├── create_pr.py        # Create pull request
+    └── cleanup.py          # Cleanup worktree
 ```
 
 ---
 
-## PR-First Commands
+## Multi-Session Scripts
 
-### Create or Prepare an Isolated Worktree
+### `multi_agent/plan.py`
 
-```bash
-python3 ./.trellis/scripts/task.py worktree <task> --dry-run
-python3 ./.trellis/scripts/task.py worktree <task>
-```
-
-Defaults:
-
-- base branch: `--base`, then `task.base_branch`, then current branch
-- branch: `task/<task-slug>`
-- path: `../trellis-worktrees/<task-slug>`
-
-The command updates `branch`, `base_branch`, and `worktree_path` only after successful execution. Dry runs do not mutate task metadata.
-
-### Open or Stage a Draft PR
+Launch Plan Agent to create task configuration.
 
 ```bash
-python3 ./.trellis/scripts/task.py create-pr <task> --draft
+python3 .trellis/scripts/multi_agent/plan.py \
+  --name <task-name> \
+  --type <dev-type> \
+  --requirement "<requirement text>"
 ```
 
-This command generates a Trellis PR body from `prd.md`, `info.md`, task metadata, validation evidence, reviewer focus, agent review, and risk/rollback notes. It uses `gh` when available and leaves local fallback artifacts and manual commands when GitHub is unavailable.
+**Options:**
+- `--name` - Task slug
+- `--type` - `frontend`, `backend`, `fullstack`
+- `--requirement` - Task description
 
-### Sync, Review, and Finish PR Handoff
-
-```bash
-python3 ./.trellis/scripts/task.py sync-pr <task>
-python3 ./.trellis/scripts/task.py review-pr <task>
-python3 ./.trellis/scripts/task.py finish-pr <task>
-```
-
-- `sync-pr` refreshes PR metadata/body and preserves human-written body content outside Trellis markers.
-- `review-pr` writes local review artifacts under the task directory.
-- `finish-pr` gates ready-for-human-review status on available review/CI information.
+**Actions:**
+1. Creates task directory
+2. Launches Plan Agent via `claude`
+3. Plan Agent can REJECT unclear requirements
+4. Creates `prd.md`, `task.json`, JSONL files
 
 ---
 
-## Parallel Worker Handoff
+### `multi_agent/start.py`
 
-Each parallel child task owns its branch/worktree and draft PR:
+Start agent in a new worktree.
 
 ```bash
-git status
-git add -A
-git commit -m "<task-slug>: <summary>"
-git push -u origin <branch>
-python3 ./.trellis/scripts/task.py create-pr <child-task> --draft
-python3 ./.trellis/scripts/task.py sync-pr <child-task>
-python3 ./.trellis/scripts/task.py review-pr <child-task>
-python3 ./.trellis/scripts/task.py finish-pr <child-task>
+python3 .trellis/scripts/multi_agent/start.py <task-dir>
 ```
 
-When remote push or `gh` is unavailable, keep the local branch, generated PR body, review artifact, and exact manual commands in the child task directory.
+**Actions:**
+1. Read `task.json` for branch name
+2. Create git worktree:
+   ```bash
+   git worktree add -b <branch> ../worktrees/<branch>
+   ```
+3. Copy files from `worktree.yaml` copy list
+4. Copy task directory to worktree
+5. Run `post_create` commands
+6. Set the session-scoped active task
+7. Start Claude Dispatch Agent:
+   ```bash
+   claude -p --agent dispatch \
+     --session-id <uuid> \
+     --dangerously-skip-permissions \
+     --output-format stream-json \
+     "Start the pipeline"
+   ```
+8. Register to `registry.json`
 
 ---
 
-## Historical Removed Scripts
+### `multi_agent/status.py`
 
-The following paths were removed and must not be used as active instructions:
+Monitor running sessions.
 
-| Removed path | Replacement |
-|--------------|-------------|
-| `.trellis/scripts/multi_agent/plan.py` | Phase 1 PRD/research/context workflow |
-| `.trellis/scripts/multi_agent/start.py` | `task.py worktree <task>` |
-| `.trellis/scripts/multi_agent/status.py` | `task.py list`, `git worktree list`, platform UI |
-| `.trellis/scripts/multi_agent/create_pr.py` | `task.py create-pr <task> --draft` |
-| `.trellis/scripts/multi_agent/cleanup.py` | `git worktree remove` and archive after merge |
-| `.trellis/scripts/common/worktree.py` | `common/task_pr.py` worktree helpers |
-| `.trellis/scripts/common/registry.py` | Git/platform state and task metadata |
-| `.trellis/worktree.yaml` | `task.py worktree` flags and task metadata |
+```bash
+# Overview of all sessions
+python3 .trellis/scripts/multi_agent/status.py
 
-Historical migration notes may mention these names only when clearly labeled as removed.
+# Detailed view
+python3 .trellis/scripts/multi_agent/status.py --detail <task-name>
+
+# Watch mode (auto-refresh)
+python3 .trellis/scripts/multi_agent/status.py --watch <task-name>
+
+# View logs
+python3 .trellis/scripts/multi_agent/status.py --log <task-name>
+
+# Show registry
+python3 .trellis/scripts/multi_agent/status.py --registry
+```
+
+**Output:**
+```
+Active Sessions:
+┌──────────────┬──────────┬────────────────┬──────────┬───────────┐
+│ Task         │ Status   │ Phase          │ Elapsed  │ Files     │
+├──────────────┼──────────┼────────────────┼──────────┼───────────┤
+│ add-login    │ Running  │ 2/4 (check)    │ 15m 32s  │ 5 changed │
+│ fix-api      │ Stopped  │ 1/4 (implement)│ 8m 15s   │ 2 changed │
+└──────────────┴──────────┴────────────────┴──────────┴───────────┘
+```
+
+---
+
+### `multi_agent/create_pr.py`
+
+Create pull request from worktree changes.
+
+```bash
+python3 .trellis/scripts/multi_agent/create_pr.py [--dry-run]
+```
+
+**Actions:**
+1. Stage changes: `git add -A`
+2. Exclude workspace: `git reset .trellis/workspace/`
+3. Commit with conventional format
+4. Push to remote
+5. Create Draft PR via `gh pr create --draft`
+6. Update task.json with `pr_url`
+
+---
+
+### `multi_agent/cleanup.py`
+
+Clean up completed worktrees.
+
+```bash
+# Specific worktree
+python3 .trellis/scripts/multi_agent/cleanup.py <branch-name>
+
+# All merged worktrees
+python3 .trellis/scripts/multi_agent/cleanup.py --merged
+
+# All worktrees (with confirmation)
+python3 .trellis/scripts/multi_agent/cleanup.py --all
+```
+
+**Actions:**
+1. Archive task to `.trellis/tasks/archive/YYYY-MM/`
+2. Remove from registry
+3. Remove worktree: `git worktree remove <path>`
+4. Optionally delete branch
+
+---
+
+## Common Utilities
+
+### `common/worktree.py`
+
+Worktree management utilities.
+
+```python
+from common.worktree import (
+    read_worktree_config,  # Read worktree.yaml
+    get_worktree_path,     # Get path for branch
+    create_worktree,       # Create new worktree
+    remove_worktree,       # Remove worktree
+)
+```
+
+### `common/registry.py`
+
+Agent registry for tracking running sessions.
+
+```python
+from common.registry import (
+    registry_add_agent,       # Add agent to registry
+    registry_remove_by_id,    # Remove by agent ID
+    registry_remove_by_worktree,  # Remove by path
+    registry_search_agent,    # Search by pattern
+    registry_list_agents,     # List all agents
+)
+```
+
+**Registry file:** `.trellis/workspace/<developer>/.agents/registry.json`
+
+```json
+{
+  "agents": [
+    {
+      "id": "feature-add-login",
+      "worktree_path": "/abs/path/to/worktrees/feature/add-login",
+      "pid": 12345,
+      "started_at": "2026-01-31T10:30:00",
+      "task_dir": ".trellis/tasks/01-31-add-login-taosu"
+    }
+  ]
+}
+```
+
+---
+
+## Claude CLI Usage
+
+### Agent Mode
+
+```bash
+claude --agent dispatch "Start the pipeline"
+```
+
+### Print Mode (non-interactive)
+
+```bash
+claude -p "Do something"
+```
+
+### Session Resume
+
+```bash
+claude --resume <session-id>
+```
+
+### Automation Mode
+
+```bash
+claude --dangerously-skip-permissions -p "..."
+```
+
+### JSON Output
+
+```bash
+claude --output-format stream-json -p "..."
+```
+
+---
+
+## Resuming Stopped Sessions
+
+```bash
+# Find session info
+python3 .trellis/scripts/multi_agent/status.py --detail <task-name>
+
+# Resume in worktree
+cd ../worktrees/feature/task-name
+claude --resume <session-id>
+```

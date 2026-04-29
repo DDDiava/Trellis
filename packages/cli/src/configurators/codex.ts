@@ -11,7 +11,9 @@ import { ensureDir, writeFile } from "../utils/file-writer.js";
 import {
   resolvePlaceholders,
   resolveAllAsSkills,
+  resolveBundledSkills,
   applyPullBasedPreludeToml,
+  writeSkills,
   writeSharedHooks,
 } from "./shared.js";
 
@@ -24,13 +26,11 @@ import {
 export async function configureCodex(cwd: string): Promise<void> {
   // Shared skills from common source → .agents/skills/
   const sharedSkillsRoot = path.join(cwd, ".agents", "skills");
-  ensureDir(sharedSkillsRoot);
-
-  for (const skill of resolveAllAsSkills(AI_TOOLS.codex.templateContext)) {
-    const skillDir = path.join(sharedSkillsRoot, skill.name);
-    ensureDir(skillDir);
-    await writeFile(path.join(skillDir, "SKILL.md"), skill.content);
-  }
+  await writeSkills(
+    sharedSkillsRoot,
+    resolveAllAsSkills(AI_TOOLS.codex.templateContext),
+    resolveBundledSkills(AI_TOOLS.codex.templateContext),
+  );
 
   const codexRoot = path.join(cwd, ".codex");
 
@@ -67,12 +67,9 @@ export async function configureCodex(cwd: string): Promise<void> {
     await writeFile(path.join(hooksDir, hook.name), hook.content);
   }
 
-  // Shared hooks (inject-workflow-state.py etc.) — Codex hooks.json references
-  // these paths. inject-subagent-context.py is skipped because Codex sub-agents
-  // can't reliably receive hook-modified prompts (class-2 pull-based).
-  await writeSharedHooks(hooksDir, {
-    exclude: ["session-start.py", "inject-subagent-context.py"],
-  });
+  // Shared hooks (inject-workflow-state.py only). Codex bundles its own
+  // session-start.py above; sub-agent context is pull-based (class-2).
+  await writeSharedHooks(hooksDir, "codex");
 
   // Hooks config → .codex/hooks.json
   await writeFile(

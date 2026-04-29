@@ -1,148 +1,72 @@
 ---
 name: finish-work
-description: "Pre-commit quality checklist covering lint, typecheck, tests, code-spec sync, API changes, database migrations, cross-layer verification, and manual testing. Blocks commit if infra or cross-layer specs lack executable depth. Use when code is written and tested but not yet committed, before submitting changes, or as a final review before git commit."
+description: "Prepare the current Trellis task for PR review, or after merge reconcile the base branch, archive the task, and record the session. Use when code is written and needs PR handoff or final post-merge cleanup."
 ---
 
-# Finish Work - Pre-Commit Checklist
+# Finish Work
 
-Before submitting or committing, use this checklist to ensure work completeness.
+Prepare or complete the current Trellis task's PR-first handoff. Code commits are handled in workflow Phase 3.4 before this skill archives anything.
 
-**Timing**: After code is written and tested, before commit
-
----
-
-## Checklist
-
-### 1. Code Quality
+## Step 1: Survey Current State
 
 ```bash
-# Must pass
-pnpm lint
-pnpm type-check
-pnpm test
+python3 ./.trellis/scripts/get_context.py --mode record
 ```
 
-- [ ] `pnpm lint` passes with 0 errors?
-- [ ] `pnpm type-check` passes with no type errors?
-- [ ] Tests pass?
-- [ ] No `console.log` statements (use logger)?
-- [ ] No non-null assertions (the `x!` operator)?
-- [ ] No `any` types?
+Use active tasks, git status, and recent commits from the output. If other completed-but-unarchived tasks appear, ask once whether to include them in this cleanup round. Default is no.
 
-### 2. Code-Spec Sync
+## Step 2: Sanity Check Code Is Committed
 
-**Code-Spec Docs**:
-- [ ] Does `.trellis/spec/backend/` need updates?
-  - New patterns, new modules, new conventions
-- [ ] Does `.trellis/spec/frontend/` need updates?
-  - New components, new hooks, new patterns
-- [ ] Does `.trellis/spec/guides/` need updates?
-  - New cross-layer flows, lessons from bugs
+Run `git status --porcelain`. Ignore `.trellis/workspace/` and `.trellis/tasks/`; those are managed by archive/journal scripts. If anything else is dirty, stop and send the user back to workflow Phase 3.4. Do not commit from this skill.
 
-**Key Question**: 
-> "If I fixed a bug or discovered something non-obvious, should I document it so future me (or others) won't hit the same issue?"
+## Step 3: Prepare Or Update The PR
 
-If YES -> Update the relevant code-spec doc.
-
-### 2.5. Code-Spec Hard Block (Infra/Cross-Layer)
-
-If this change touches infra or cross-layer contracts, this is a blocking checklist:
-
-- [ ] Spec content is executable (real signatures/contracts), not principle-only text
-- [ ] Includes file path + command/API name + payload field names
-- [ ] Includes validation and error matrix
-- [ ] Includes Good/Base/Bad cases
-- [ ] Includes required tests and assertion points
-
-**Block Rule**:
-If infra/cross-layer changed but the related spec is still abstract, do NOT finish. Run `$update-spec` manually first.
-
-### 3. API Changes
-
-If you modified API endpoints:
-
-- [ ] Input schema updated?
-- [ ] Output schema updated?
-- [ ] API documentation updated?
-- [ ] Client code updated to match?
-
-### 4. Database Changes
-
-If you modified database schema:
-
-- [ ] Migration file created?
-- [ ] Schema file updated?
-- [ ] Related queries updated?
-- [ ] Seed data updated (if applicable)?
-
-### 5. Cross-Layer Verification
-
-If the change spans multiple layers:
-
-- [ ] Data flows correctly through all layers?
-- [ ] Error handling works at each boundary?
-- [ ] Types are consistent across layers?
-- [ ] Loading states handled?
-
-### 6. Manual Testing
-
-- [ ] Feature works in browser/app?
-- [ ] Edge cases tested?
-- [ ] Error states tested?
-- [ ] Works after page refresh?
-
----
-
-## Quick Check Flow
+If the task PR is not ready for human review yet:
 
 ```bash
-# 1. Code checks
-pnpm lint && pnpm type-check
-
-# 2. View changes
-git status
-git diff --name-only
-
-# 3. Based on changed files, check relevant items above
+python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
+python3 ./.trellis/scripts/task.py sync-pr <task-name>
+python3 ./.trellis/scripts/task.py review-pr <task-name>
+python3 ./.trellis/scripts/task.py finish-pr <task-name>
 ```
 
----
+If GitHub CLI or authentication is unavailable, keep the local fallback artifacts (`pr-body.md`, `review/pr-review-*.md`, task metadata, and manual push/PR commands) and report them to the user. If the PR is prepared but not merged, stop and tell the user to merge it, then run `$finish-work` again so post-merge reconcile can happen before archive/journal.
 
-## Common Oversights
+Do not archive by default before merge. Do not archive before merge unless the user explicitly confirms local-only completion.
 
-| Oversight | Consequence | Check |
-|-----------|-------------|-------|
-| Code-spec docs not updated | Others don't know the change | Check .trellis/spec/ |
-| Spec text is abstract only | Easy regressions in infra/cross-layer changes | Require signature/contract/matrix/cases/tests |
-| Migration not created | Schema out of sync | Check db/migrations/ |
-| Types not synced | Runtime errors | Check shared types |
-| Tests not updated | False confidence | Run full test suite |
-| Console.log left in | Noisy production logs | Search for console.log |
+## Step 4: Post-Merge Reconcile
 
----
+Run this only after the user says the PR was merged, or explicitly confirms local-only completion:
 
-## Relationship to Other Commands
-
-```
-Development Flow:
-  Write code -> Test -> $finish-work -> git commit -> $record-session
-                          |                              |
-                   Ensure completeness              Record progress
-                   
-Debug Flow:
-  Hit bug -> Fix -> $break-loop -> Knowledge capture
-                       |
-                  Deep analysis
+```bash
+git fetch origin
+git branch --show-current
+git status --short --branch
 ```
 
-- `$finish-work` - Check work completeness (this skill)
-- `$record-session` - Record session and commits
-- `$break-loop` - Deep analysis after debugging
+Confirm the current workspace is on `<base-branch>`. Local untracked or dirty files are a blocker; ask the user whether to back up, commit, stash, or stop.
 
----
+Only when the base workspace is clean and on the base branch:
 
-## Core Principle
+```bash
+git pull --ff-only origin <base-branch>
+git status --short --branch
+git rev-parse <base-branch>
+git rev-parse origin/<base-branch>
+```
 
-> **Delivery includes not just code, but also documentation, verification, and knowledge capture.**
+Verify local and origin SHAs match. Do not archive or record the session until the local base branch matches `origin/<base-branch>`. For parallel child PRs, verify each child merge commit is an ancestor of the base branch before cleaning up child worktrees or branches.
 
-Complete work = Code + Docs + Tests + Verification
+## Step 5: Archive And Journal
+
+After reconcile is clean and current:
+
+```bash
+python3 ./.trellis/scripts/task.py archive <task-name>
+python3 ./.trellis/scripts/add_session.py \
+  --title "Session Title" \
+  --commit "hash1,hash2" \
+  --summary "Brief summary"
+```
+
+Use Phase 3.4 work-commit hashes for `--commit`; do not include archive commit hashes.

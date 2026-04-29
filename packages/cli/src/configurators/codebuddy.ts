@@ -5,6 +5,7 @@ import {
   resolvePlaceholders,
   resolveCommands,
   resolveSkills,
+  resolveBundledSkills,
   writeSkills,
   writeAgents,
   writeSharedHooks,
@@ -34,9 +35,13 @@ export async function configureCodebuddy(cwd: string): Promise<void> {
     await writeFile(path.join(commandsDir, `${cmd.name}.md`), cmd.content);
   }
 
-  await writeSkills(path.join(configRoot, "skills"), resolveSkills(ctx));
+  await writeSkills(
+    path.join(configRoot, "skills"),
+    resolveSkills(ctx),
+    resolveBundledSkills(ctx),
+  );
   await writeAgents(path.join(configRoot, "agents"), getAllAgents());
-  await writeSharedHooks(path.join(configRoot, "hooks"));
+  await writeSharedHooks(path.join(configRoot, "hooks"), "codebuddy");
 
   const settings = getSettingsTemplate();
   await writeFile(

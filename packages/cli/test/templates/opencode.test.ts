@@ -4,12 +4,29 @@ import {
   buildSessionContext,
   hasInjectedTrellisContext,
 } from "../../src/templates/opencode/plugins/session-start.js";
+import injectSubagentContextPlugin from "../../src/templates/opencode/plugins/inject-subagent-context.js";
 
 interface TestContextCollector {
   processed: Set<string>;
   markProcessed(directory: string, sessionID: string): void;
   isProcessed(directory: string, sessionID: string): boolean;
-  clear(directory: string, sessionID: string): void;
+  clear(sessionID: string): void;
+}
+
+interface OpenCodeInjectHooks {
+  "tool.execute.before": (
+    input: unknown,
+    output: { args: { command: string } },
+  ) => Promise<void>;
+}
+
+async function createOpenCodeInjectHooks(
+  platform: NodeJS.Platform = "linux",
+): Promise<OpenCodeInjectHooks> {
+  return (await injectSubagentContextPlugin({
+    directory: "/tmp/trellis-opencode-test",
+    platform,
+  })) as OpenCodeInjectHooks;
 }
 
 describe("opencode session context dedupe", () => {
@@ -47,6 +64,8 @@ describe("opencode session-start history detection", () => {
   it("includes the one-shot first-reply notice in injected context", () => {
     const context = buildSessionContext({
       directory: "/tmp/trellis-opencode-test",
+      getActiveTask: () => ({ taskPath: null, source: "none", stale: false }),
+      getContextKey: () => null,
       getCurrentTask: () => null,
       readFile: () => "",
       readProjectFile: () => "",
@@ -99,5 +118,118 @@ describe("opencode session-start history detection", () => {
     ];
 
     expect(hasInjectedTrellisContext(messages)).toBe(false);
+  });
+});
+
+describe("opencode bash session context", () => {
+  it("injects TRELLIS_CONTEXT_ID into Bash commands from plugin sessionID", async () => {
+    const hooks = await createOpenCodeInjectHooks();
+    const output = {
+      args: {
+        command: "python3 ./.trellis/scripts/task.py start .trellis/tasks/demo",
+      },
+    };
+
+    await hooks["tool.execute.before"](
+      { tool: "bash", sessionID: "oc-a" },
+      output,
+    );
+
+    expect(output.args.command).toBe(
+      "export TRELLIS_CONTEXT_ID='opencode_oc-a'; python3 ./.trellis/scripts/task.py start .trellis/tasks/demo",
+    );
+  });
+
+  it("uses PowerShell environment syntax on Windows", async () => {
+    const hooks = await createOpenCodeInjectHooks("win32");
+    const output = {
+      args: {
+        command: "python ./.trellis/scripts/task.py start .trellis/tasks/demo",
+      },
+    };
+
+    await hooks["tool.execute.before"](
+      { tool: "bash", sessionID: "oc-a" },
+      output,
+    );
+
+    expect(output.args.command).toBe(
+      "$env:TRELLIS_CONTEXT_ID = 'opencode_oc-a'; python ./.trellis/scripts/task.py start .trellis/tasks/demo",
+    );
+  });
+
+  it("does not duplicate an explicit TRELLIS_CONTEXT_ID assignment", async () => {
+    const hooks = await createOpenCodeInjectHooks();
+    const output = {
+      args: {
+        command:
+          "TRELLIS_CONTEXT_ID=manual python3 ./.trellis/scripts/task.py current",
+      },
+    };
+
+    await hooks["tool.execute.before"](
+      { tool: "bash", sessionID: "oc-a" },
+      output,
+    );
+
+    expect(output.args.command).toBe(
+      "TRELLIS_CONTEXT_ID=manual python3 ./.trellis/scripts/task.py current",
+    );
+  });
+
+  it("does not duplicate an explicit exported TRELLIS_CONTEXT_ID", async () => {
+    const hooks = await createOpenCodeInjectHooks();
+    const output = {
+      args: {
+        command:
+          "export TRELLIS_CONTEXT_ID=manual; python3 ./.trellis/scripts/task.py current",
+      },
+    };
+
+    await hooks["tool.execute.before"](
+      { tool: "bash", sessionID: "oc-a" },
+      output,
+    );
+
+    expect(output.args.command).toBe(
+      "export TRELLIS_CONTEXT_ID=manual; python3 ./.trellis/scripts/task.py current",
+    );
+  });
+
+  it("does not duplicate an explicit PowerShell TRELLIS_CONTEXT_ID assignment", async () => {
+    const hooks = await createOpenCodeInjectHooks("win32");
+    const output = {
+      args: {
+        command:
+          "$env:TRELLIS_CONTEXT_ID = 'manual'; python ./.trellis/scripts/task.py current",
+      },
+    };
+
+    await hooks["tool.execute.before"](
+      { tool: "bash", sessionID: "oc-a" },
+      output,
+    );
+
+    expect(output.args.command).toBe(
+      "$env:TRELLIS_CONTEXT_ID = 'manual'; python ./.trellis/scripts/task.py current",
+    );
+  });
+
+  it("does not treat a grep pattern as an explicit TRELLIS_CONTEXT_ID assignment", async () => {
+    const hooks = await createOpenCodeInjectHooks();
+    const output = {
+      args: {
+        command: "env | sort | grep '^TRELLIS_CONTEXT_ID='",
+      },
+    };
+
+    await hooks["tool.execute.before"](
+      { tool: "bash", sessionID: "oc-a" },
+      output,
+    );
+
+    expect(output.args.command).toBe(
+      "export TRELLIS_CONTEXT_ID='opencode_oc-a'; env | sort | grep '^TRELLIS_CONTEXT_ID='",
+    );
   });
 });

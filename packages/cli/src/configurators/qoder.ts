@@ -5,6 +5,7 @@ import {
   resolvePlaceholders,
   resolveCommands,
   resolveSkills,
+  resolveBundledSkills,
   wrapWithCommandFrontmatter,
   writeSkills,
   writeAgents,
@@ -37,14 +38,16 @@ export async function configureQoder(cwd: string): Promise<void> {
     );
   }
 
-  await writeSkills(path.join(configRoot, "skills"), resolveSkills(ctx));
+  await writeSkills(
+    path.join(configRoot, "skills"),
+    resolveSkills(ctx),
+    resolveBundledSkills(ctx),
+  );
   await writeAgents(
     path.join(configRoot, "agents"),
     applyPullBasedPreludeMarkdown(getAllAgents()),
   );
-  await writeSharedHooks(path.join(configRoot, "hooks"), {
-    exclude: ["inject-subagent-context.py"],
-  });
+  await writeSharedHooks(path.join(configRoot, "hooks"), "qoder");
 
   const settings = getSettingsTemplate();
   await writeFile(

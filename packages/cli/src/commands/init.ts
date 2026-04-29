@@ -43,6 +43,7 @@ import {
   type SpecTemplate,
   type TemplateStrategy,
   type RegistrySource,
+  type RegistryBackend,
 } from "../utils/template-fetcher.js";
 import { setupProxy, maskProxyUrl } from "../utils/proxy.js";
 
@@ -139,7 +140,7 @@ export function slugifyDeveloperName(name: string): string {
 }
 
 /**
- * Write a task skeleton (task.json + prd.md + .current-task pointer).
+ * Write a task skeleton (task.json + prd.md).
  *
  * Idempotent: if the task dir already exists, returns true without touching
  * anything. Shared by both creator bootstrap and joiner onboarding flows.
@@ -161,11 +162,6 @@ function writeTaskSkeleton(
       "utf-8",
     );
     fs.writeFileSync(path.join(taskDir, FILE_NAMES.PRD), prdContent, "utf-8");
-    fs.writeFileSync(
-      path.join(cwd, PATHS.CURRENT_TASK_FILE),
-      `${PATHS.TASKS}/${taskName}`,
-      "utf-8",
-    );
     return true;
   } catch {
     return false;
@@ -232,9 +228,9 @@ function getBootstrapPrdContent(
 **You (the AI) are running this task. The developer does not read this file.**
 
 The developer just ran \`trellis init\` on this project for the first time.
-\`.trellis/\` now exists with empty spec scaffolding, and this task has been
-set as their current task. They'll open their AI tool, run \`/trellis:continue\`,
-and you'll land here.
+\`.trellis/\` now exists with empty spec scaffolding, and this bootstrap task
+exists under \`.trellis/tasks/\`. When they want to work on it, they should start
+this task from a session that provides Trellis session identity.
 
 **Your job**: help them populate \`.trellis/spec/\` with the team's real
 coding conventions. Every future AI session — this project's
@@ -486,9 +482,9 @@ function getJoinerPrdContent(
 **You (the AI) are running this task. The developer does not read this file.**
 
 \`${developer}\` just ran \`trellis init\` on a fresh clone, saw "Developer
-initialized", and will now start asking you questions in chat. This task is
-already set as their current task (\`.trellis/.current-task\` points here), so
-when they run \`/trellis:continue\` you'll land back on this PRD.
+initialized", and will now start asking you questions in chat. This joiner task
+exists under \`.trellis/tasks/\`; when they want to work on it, they should
+start it from a session that provides Trellis session identity.
 
 Your job is to orient them to Trellis. Don't dump all of this at them — open
 with a short greeting, ask where they want to start, and fill in the rest as
@@ -509,8 +505,7 @@ code every session.
 - **Task lifecycle**: planning → in_progress → done → archive, under
   \`.trellis/tasks/\`.
 - **Core slash commands**:
-  - \`/trellis:continue\` — resume the current task (their primary entry,
-    since current-task is already set to this onboarding task)
+  - \`/trellis:continue\` — resume the current session's active task
   - \`/trellis:finish-work\` — wrap up a finished task
   - \`/trellis:start\` — session boot from scratch (not needed here; the
     SessionStart hook does its job automatically)
@@ -518,7 +513,7 @@ code every session.
 ### 2. Runtime mechanics (explain when they ask "how does it know what to do")
 
 - **SessionStart hook** runs \`get_context.py\` and injects identity, git
-  status, current-task pointer, active tasks, and workflow phase into the AI
+  status, session active task, active tasks, and workflow phase into the AI
   conversation at every session start.
 - **\`<workflow-state>\` tag** is auto-injected with every user message,
   carrying the current task + phase hint.
@@ -533,7 +528,7 @@ code every session.
   — reviews changes against specs, auto-fixes issues, runs lint/typecheck.
 
 File layout (mention when they ask "where does what live"):
-- \`.trellis/.current-task\` — session pointer, gitignored, per-checkout
+- \`.trellis/.runtime/sessions/<session>.json\` — session active-task state, gitignored
 - \`.trellis/tasks/<task>/{implement,check}.jsonl\` — per-task context manifests
 - \`.trellis/spec/\` — project-wide conventions (source of truth)
 - \`.trellis/workspace/${developer}/journal-*.md\` — their session log,
@@ -1213,6 +1208,7 @@ export async function init(options: InitOptions): Promise<void> {
 
   // Pre-fetched templates list (used to pass selected SpecTemplate to downloadTemplateById)
   let fetchedTemplates: SpecTemplate[] = [];
+  let registryBackend: RegistryBackend | undefined;
 
   // Determine the index URL based on registry
   const indexUrl = registry
@@ -1241,10 +1237,13 @@ export async function init(options: InitOptions): Promise<void> {
     process.stdout.write(chalk.gray(`   Loading... 0s/${timeoutSec}s`));
     let templates: SpecTemplate[];
     let registryProbeNotFound = false;
+    let registryProbeError: Error | undefined;
     if (registry) {
-      const probeResult = await probeRegistryIndex(indexUrl);
+      const probeResult = await probeRegistryIndex(indexUrl, registry);
       templates = probeResult.templates;
       registryProbeNotFound = probeResult.isNotFound;
+      registryProbeError = probeResult.error;
+      registryBackend = probeResult.backend;
     } else {
       templates = await fetchTemplateIndex(indexUrl);
     }
@@ -1264,7 +1263,7 @@ export async function init(options: InitOptions): Promise<void> {
       // Custom registry: transient error (not a 404) — abort, don't misclassify
       console.log(
         chalk.red(
-          "   Could not reach registry (network issue). Check your connection and try again.",
+          `   ${registryProbeError?.message ?? "Could not reach registry. Check your connection and try again."}`,
         ),
       );
       return;
@@ -1331,8 +1330,12 @@ export async function init(options: InitOptions): Promise<void> {
                 `   Checking for templates at ${registry.gigetSource}...`,
               ),
             );
-            const customProbe = await probeRegistryIndex(customIndexUrl);
+            const customProbe = await probeRegistryIndex(
+              customIndexUrl,
+              registry,
+            );
             const customTemplates = customProbe.templates;
+            registryBackend = customProbe.backend;
             if (customTemplates.length > 0) {
               // Marketplace mode: show picker with custom templates
               fetchedTemplates = customTemplates;
@@ -1394,7 +1397,7 @@ export async function init(options: InitOptions): Promise<void> {
               // Transient error (not 404) — loop back, don't misclassify
               console.log(
                 chalk.yellow(
-                  "   Could not reach registry (network issue). Try again or enter a different source.",
+                  `   ${customProbe.error?.message ?? "Could not reach registry. Try again or enter a different source."}`,
                 ),
               );
               registry = undefined; // Reset so we don't fall through to direct download
@@ -1451,7 +1454,9 @@ export async function init(options: InitOptions): Promise<void> {
   if (options.yes && registry && !selectedTemplate && !monorepoPackages) {
     const probeResult = await probeRegistryIndex(
       `${registry.rawBaseUrl}/index.json`,
+      registry,
     );
+    registryBackend = probeResult.backend;
     if (probeResult.templates.length > 0) {
       // Marketplace mode requires interactive selection — can't auto-select
       console.log(
@@ -1466,7 +1471,7 @@ export async function init(options: InitOptions): Promise<void> {
       // Transient error (not 404) — abort, don't misclassify as direct-download
       console.log(
         chalk.red(
-          "Error: Could not reach registry (network issue). Check your connection and try again.",
+          `Error: ${probeResult.error?.message ?? "Could not reach registry. Check your connection and try again."}`,
         ),
       );
       return;
@@ -1494,6 +1499,8 @@ export async function init(options: InitOptions): Promise<void> {
       templateStrategy,
       prefetched,
       registry,
+      undefined,
+      registryBackend,
     );
 
     if (result.success) {
@@ -1545,6 +1552,8 @@ export async function init(options: InitOptions): Promise<void> {
       cwd,
       registry,
       templateStrategy,
+      undefined,
+      registryBackend,
     );
 
     if (result.success) {
@@ -1662,9 +1671,6 @@ export async function init(options: InitOptions): Promise<void> {
       }
     }
   }
-
-  // Print "What We Solve" section
-  printWhatWeSolve();
 }
 
 /**
@@ -1685,52 +1691,11 @@ function askInput(prompt: string): Promise<string> {
 }
 
 async function createRootFiles(cwd: string): Promise<void> {
-  const agentsPath = path.join(cwd, "AGENTS.md");
+  const agentsPath = path.join(cwd, FILE_NAMES.AGENTS);
 
   // Write AGENTS.md from template
   const agentsWritten = await writeFile(agentsPath, agentsMdContent);
   if (agentsWritten) {
     console.log(chalk.blue("📄 Created AGENTS.md"));
   }
-}
-
-/**
- * Print "What We Solve" section showing Trellis value proposition
- * Styled like a meme/rant to resonate with developer pain points
- */
-function printWhatWeSolve(): void {
-  console.log(
-    chalk.gray("\nSound familiar? ") +
-      chalk.bold("You'll never say these again!!\n"),
-  );
-
-  // Pain point 1: Bug loop → Thinking Guides + Check Loop
-  console.log(chalk.gray("✗ ") + '"Fix A → break B → fix B → break A..."');
-  console.log(
-    chalk.green("  ✓ ") +
-      chalk.white("Thinking Guides + Check Loop: Think first, verify after"),
-  );
-  // Pain point 2: Instructions ignored/forgotten → Sub-agents + per-agent spec injection
-  console.log(
-    chalk.gray("✗ ") +
-      '"Wrote CLAUDE.md, AI ignored it. Reminded AI, it forgot 5 turns later."',
-  );
-  console.log(
-    chalk.green("  ✓ ") +
-      chalk.white("Spec Injection: Rules enforced per task, not per chat"),
-  );
-  // Pain point 3: Missing connections → Cross-Layer Guide
-  console.log(chalk.gray("✗ ") + '"Code works but nothing connects..."');
-  console.log(
-    chalk.green("  ✓ ") +
-      chalk.white("Cross-Layer Guide: Map data flow before coding"),
-  );
-  // Pain point 4: Code explosion → Plan Agent
-  console.log(chalk.gray("✗ ") + '"Asked for a button, got 9000 lines"');
-  console.log(
-    chalk.green("  ✓ ") +
-      chalk.white("Plan Agent: Rejects and splits oversized tasks"),
-  );
-
-  console.log("");
 }

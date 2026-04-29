@@ -1,73 +1,42 @@
 ---
 name: trellis-finish-work
-description: "Prepare the current Trellis task for PR review: run final checks, create or sync a draft PR, write a local review artifact, and mark the PR ready for human review. Use when code is written and needs PR handoff."
+description: "Prepare the current Trellis task for PR review, or after merge reconcile the base branch, archive the task, and record the session. Use when code is written and needs PR handoff or final post-merge cleanup."
 ---
 
 # Finish Work
 
-Prepare the current Trellis task for PR review.
+Prepare or complete the current Trellis task's PR-first handoff. Code commits are handled in workflow Phase 3.4 before this skill archives anything.
 
-## Step 1: Final Quality Gate
-
-Run the Phase 3 verification path before changing PR state:
-
-- `trellis-check` for spec compliance, lint, type-check, and tests
-- `trellis-update-spec` when this task produced reusable project knowledge
-
-Do not continue until failures are fixed or clearly documented.
-
-## Step 2: Prepare Or Update The PR
-
-Inspect the current task and branch state:
+## Step 1: Survey Current State
 
 ```bash
-git status --short
-python3 ./.trellis/scripts/task.py list --mine
+python3 ./.trellis/scripts/get_context.py --mode record
 ```
 
-If there is no task branch/worktree metadata yet, prepare it:
+Use active tasks, git status, and recent commits from the output. If other completed-but-unarchived tasks appear, ask once whether to include them in this cleanup round. Default is no.
 
-```bash
-python3 ./.trellis/scripts/task.py worktree <task-name> --dry-run
-```
+## Step 2: Sanity Check Code Is Committed
 
-Create or stage the PR body:
+Run `git status --porcelain`. Ignore `.trellis/workspace/` and `.trellis/tasks/`; those are managed by archive/journal scripts. If anything else is dirty, stop and send the user back to workflow Phase 3.4. Do not commit from this skill.
+
+## Step 3: Prepare Or Update The PR
+
+If the task PR is not ready for human review yet:
 
 ```bash
 python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
-```
-
-If a PR already exists, refresh metadata and replace only the Trellis-managed body section:
-
-```bash
 python3 ./.trellis/scripts/task.py sync-pr <task-name>
-```
-
-## Step 3: Agent Review Artifact
-
-Create a local review artifact for the human reviewer:
-
-```bash
 python3 ./.trellis/scripts/task.py review-pr <task-name>
-```
-
-Then mark the PR ready for human review when CI/review metadata allows:
-
-```bash
 python3 ./.trellis/scripts/task.py finish-pr <task-name>
 ```
 
-## Step 4: Human Handoff
+If GitHub CLI or authentication is unavailable, keep the local fallback artifacts (`pr-body.md`, `review/pr-review-*.md`, task metadata, and manual push/PR commands) and report them to the user. If the PR is prepared but not merged, stop and tell the user to merge it, then run `$finish-work` again so post-merge reconcile can happen before archive/journal.
 
-Tell the user:
+Do not archive by default before merge. Do not archive before merge unless the user explicitly confirms local-only completion.
 
-> "The PR is prepared for human review. Please review, push/merge as appropriate, then run `/finish-work` again after merge so I can reconcile the local base branch before archiving or recording the session."
+## Step 4: Post-Merge Reconcile
 
-Do not archive by default before merge.
-
-## Step 5: Post-Merge Reconcile
-
-Run this only after the PR is merged, or after the user explicitly confirms local-only completion. Use the PR base branch or `task.json.base_branch`; this is usually `main`.
+Run this only after the user says the PR was merged, or explicitly confirms local-only completion:
 
 ```bash
 git fetch origin
@@ -75,9 +44,9 @@ git branch --show-current
 git status --short --branch
 ```
 
-Confirm the current workspace is on `<base-branch>`. Inspect `git status --short --branch` before pulling. Local untracked or dirty files are a blocker requiring backup, commit, stash, or a user decision before pull.
+Confirm the current workspace is on `<base-branch>`. Local untracked or dirty files are a blocker; ask the user whether to back up, commit, stash, or stop.
 
-Only when the workspace is on the base branch and clean:
+Only when the base workspace is clean and on the base branch:
 
 ```bash
 git pull --ff-only origin <base-branch>
@@ -86,16 +55,18 @@ git rev-parse <base-branch>
 git rev-parse origin/<base-branch>
 ```
 
-Verify both `git rev-parse` commands print the same commit SHA. Do not archive or record the session until the local base branch matches `origin/<base-branch>`.
+Verify local and origin SHAs match. Do not archive or record the session until the local base branch matches `origin/<base-branch>`. For parallel child PRs, verify each child merge commit is an ancestor of the base branch before cleaning up child worktrees or branches.
 
-## Step 6: Archive And Record
+## Step 5: Archive And Journal
 
-After post-merge reconcile is clean and current, archive and record the session:
+After reconcile is clean and current:
 
 ```bash
 python3 ./.trellis/scripts/task.py archive <task-name>
 python3 ./.trellis/scripts/add_session.py \
   --title "Session Title" \
-  --commit "merge-or-final-commit" \
+  --commit "hash1,hash2" \
   --summary "Brief summary"
 ```
+
+Use Phase 3.4 work-commit hashes for `--commit`; do not include archive commit hashes.

@@ -6,9 +6,11 @@ import {
   resolvePlaceholders,
   resolveCommands,
   resolveSkills,
+  resolveBundledSkills,
   applyPullBasedPreludeMarkdown,
+  writeSkills,
+  writeSharedHooks,
 } from "./shared.js";
-import { getSharedHookScripts } from "../templates/shared-hooks/index.js";
 
 /**
  * Configure GitHub Copilot:
@@ -32,14 +34,11 @@ export async function configureCopilot(cwd: string): Promise<void> {
     );
   }
 
-  // Skills
-  const skillsDir = path.join(cwd, ".github", "skills");
-  ensureDir(skillsDir);
-  for (const skill of resolveSkills(ctx)) {
-    const skillDir = path.join(skillsDir, skill.name);
-    ensureDir(skillDir);
-    await writeFile(path.join(skillDir, "SKILL.md"), skill.content);
-  }
+  await writeSkills(
+    path.join(cwd, ".github", "skills"),
+    resolveSkills(ctx),
+    resolveBundledSkills(ctx),
+  );
 
   const agentsDir = path.join(cwd, ".github", "agents");
   ensureDir(agentsDir);
@@ -62,13 +61,9 @@ export async function configureCopilot(cwd: string): Promise<void> {
     await writeFile(path.join(hooksDir, hook.name), hook.content);
   }
 
-  // Shared hook scripts: skip session-start (Copilot has its own) and
-  // inject-subagent-context (Copilot is pull-based, hook can't reach sub-agents)
-  for (const hook of getSharedHookScripts()) {
-    if (hook.name === "session-start.py") continue;
-    if (hook.name === "inject-subagent-context.py") continue;
-    await writeFile(path.join(hooksDir, hook.name), hook.content);
-  }
+  // Shared hook scripts (inject-workflow-state.py only). Copilot bundles its
+  // own session-start.py above; sub-agent context is pull-based (class-2).
+  await writeSharedHooks(hooksDir, "copilot");
 
   // Hooks config
   const resolvedConfig = resolvePlaceholders(getHooksConfig());

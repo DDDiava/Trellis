@@ -12,7 +12,7 @@ import {
   isManagedRootDir,
   resolveCliFlag,
 } from "../../src/configurators/index.js";
-import { AI_TOOLS } from "../../src/types/ai-tools.js";
+import { AI_TOOLS, type AITool } from "../../src/types/ai-tools.js";
 
 const PRELUDE_HEADING = "Required: Load Trellis Context First";
 
@@ -306,6 +306,23 @@ describe("getPlatformsWithPythonHooks", () => {
 // =============================================================================
 
 describe("collectPlatformTemplates", () => {
+  const SKILL_ROOTS: Record<AITool, string> = {
+    "claude-code": ".claude/skills",
+    cursor: ".cursor/skills",
+    opencode: ".opencode/skills",
+    codex: ".agents/skills",
+    kilo: ".kilocode/skills",
+    kiro: ".kiro/skills",
+    gemini: ".gemini/skills",
+    antigravity: ".agent/skills",
+    windsurf: ".windsurf/skills",
+    qoder: ".qoder/skills",
+    codebuddy: ".codebuddy/skills",
+    copilot: ".github/skills",
+    droid: ".factory/skills",
+    pi: ".pi/skills",
+  };
+
   it("does not throw for any platform", () => {
     for (const id of PLATFORM_IDS) {
       expect(() => collectPlatformTemplates(id)).not.toThrow();
@@ -342,6 +359,34 @@ describe("collectPlatformTemplates", () => {
       const result = collectPlatformTemplates(id);
       if (result !== undefined) {
         expect(result.size).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("tracks bundled trellis-meta files for every skill-writing platform", () => {
+    for (const [id, skillRoot] of Object.entries(SKILL_ROOTS)) {
+      const result = collectPlatformTemplates(id as AITool);
+      expect(result, `${id} should have template tracking`).toBeInstanceOf(Map);
+      expect(result?.has(`${skillRoot}/trellis-meta/SKILL.md`)).toBe(true);
+      expect(
+        result?.has(
+          `${skillRoot}/trellis-meta/references/local-architecture/overview.md`,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  // POSIX-key invariant: collector keys feed the cross-platform hash
+  // dictionary in `.template-hashes.json`, which must be identical
+  // regardless of host OS. Backslash separators (Windows `path.join`)
+  // would silently corrupt the hash store and make every file appear
+  // "modified" after a cross-OS round-trip.
+  it("returned Map keys never contain backslash (POSIX-only)", () => {
+    for (const id of PLATFORM_IDS) {
+      const result = collectPlatformTemplates(id);
+      if (!result) continue;
+      for (const [filePath] of result) {
+        expect(filePath).not.toMatch(/\\/);
       }
     }
   });

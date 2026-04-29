@@ -173,6 +173,7 @@ import path from "node:path";
 import { ensureDir, writeFile } from "../utils/file-writer.js";
 import {
   type CommonTemplate,
+  getBundledSkillTemplates,
   getCommandTemplates,
   getSkillTemplates,
 } from "../templates/common/index.js";
@@ -180,6 +181,13 @@ import {
 /** A resolved template ready to be written to disk. */
 export interface ResolvedTemplate {
   name: string;
+  content: string;
+}
+
+/** A resolved file inside a multi-file skill directory. */
+export interface ResolvedSkillFile {
+  /** POSIX path relative to the skills root, e.g. "trellis-meta/SKILL.md" */
+  relativePath: string;
   content: string;
 }
 
@@ -249,20 +257,60 @@ export function resolveSkills(ctx: TemplateContext): ResolvedTemplate[] {
   }));
 }
 
+/**
+ * Resolve multi-file built-in skills.
+ *
+ * Unlike workflow skills, bundled skills already contain their own SKILL.md
+ * frontmatter and may include references/assets. They are still rendered
+ * through placeholder resolution so init and update get byte-identical output.
+ */
+export function resolveBundledSkills(
+  ctx: TemplateContext,
+): ResolvedSkillFile[] {
+  return getBundledSkillTemplates().flatMap((skill) =>
+    skill.files.map((file) => ({
+      relativePath: `${skill.name}/${file.relativePath}`,
+      content: resolvePlaceholders(file.content, ctx),
+    })),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Shared configurator write helpers
 // ---------------------------------------------------------------------------
 
-/** Write skill directories from resolved templates */
+/** Collect skill files under a target root for update hash tracking. */
+export function collectSkillTemplates(
+  skillsRoot: string,
+  skills: readonly { name: string; content: string }[],
+  bundledSkills: readonly ResolvedSkillFile[] = [],
+): Map<string, string> {
+  const files = new Map<string, string>();
+  for (const skill of skills) {
+    files.set(`${skillsRoot}/${skill.name}/SKILL.md`, skill.content);
+  }
+  for (const skillFile of bundledSkills) {
+    files.set(`${skillsRoot}/${skillFile.relativePath}`, skillFile.content);
+  }
+  return files;
+}
+
+/** Write skill directories from resolved templates and bundled skill files. */
 export async function writeSkills(
   skillsRoot: string,
   skills: { name: string; content: string }[],
+  bundledSkills: readonly ResolvedSkillFile[] = [],
 ): Promise<void> {
   ensureDir(skillsRoot);
   for (const skill of skills) {
     const skillDir = path.join(skillsRoot, skill.name);
     ensureDir(skillDir);
     await writeFile(path.join(skillDir, "SKILL.md"), skill.content);
+  }
+  for (const skillFile of bundledSkills) {
+    const targetPath = path.join(skillsRoot, skillFile.relativePath);
+    ensureDir(path.dirname(targetPath));
+    await writeFile(targetPath, skillFile.content);
   }
 }
 
@@ -278,17 +326,15 @@ export async function writeAgents(
   }
 }
 
-/** Write shared hook scripts to a hooks directory */
+/** Write the shared hook scripts that `platform` actually registers. */
 export async function writeSharedHooks(
   hooksDir: string,
-  options: { exclude?: readonly string[] } = {},
+  platform: import("../templates/shared-hooks/index.js").SharedHookPlatform,
 ): Promise<void> {
-  const { getSharedHookScripts } =
+  const { getSharedHookScriptsForPlatform } =
     await import("../templates/shared-hooks/index.js");
-  const exclude = new Set(options.exclude ?? []);
   ensureDir(hooksDir);
-  for (const hook of getSharedHookScripts()) {
-    if (exclude.has(hook.name)) continue;
+  for (const hook of getSharedHookScriptsForPlatform(platform)) {
     await writeFile(path.join(hooksDir, hook.name), hook.content);
   }
 }
@@ -325,7 +371,7 @@ export function buildPullBasedPrelude(agentType: SubAgentType): string {
 
 This platform does NOT auto-inject task context via hook. Before doing anything else, you MUST load context yourself:
 
-1. Read \`.trellis/.current-task\` to find the current task path (e.g. \`.trellis/tasks/04-17-foo/\`).
+1. Run \`python3 ./.trellis/scripts/task.py current --source\` to find the active task path and source (e.g. \`Current task: .trellis/tasks/04-17-foo\`).
 2. Read the task's \`prd.md\` (requirements) and \`info.md\` if it exists (technical design).
 3. Read \`<task-path>/${jsonl}\` — JSONL list of dev spec files relevant to this agent.
 4. For each entry in the JSONL, Read its \`file\` path — these are the dev specs you must follow.
@@ -333,7 +379,7 @@ This platform does NOT auto-inject task context via hook. Before doing anything 
 
 If \`${jsonl}\` has no curated entries (only a seed row, or the file is missing), fall back to: read \`prd.md\`, list available specs with \`python3 ./.trellis/scripts/get_context.py --mode packages\`, and pick the specs that match the task domain yourself. Do NOT block on the missing jsonl — proceed with prd-only context plus your spec judgment.
 
-If \`.current-task\` is missing or the task has no \`prd.md\`, ask the user what to work on; do NOT proceed without context.
+If there is no active task or the task has no \`prd.md\`, ask the user what to work on; do NOT proceed without context.
 
 ---
 

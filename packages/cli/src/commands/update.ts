@@ -3,7 +3,7 @@ import path from "node:path";
 import chalk from "chalk";
 import inquirer from "inquirer";
 
-import { PATHS, DIR_NAMES } from "../constants/paths.js";
+import { DIR_NAMES, FILE_NAMES, PATHS } from "../constants/paths.js";
 import type { AITool } from "../types/ai-tools.js";
 import { VERSION, PACKAGE_NAME } from "../constants/version.js";
 import {
@@ -28,6 +28,7 @@ import {
   computeHash,
 } from "../utils/template-hash.js";
 import { compareVersions } from "../utils/compare-versions.js";
+import { toPosix } from "../utils/posix.js";
 import { setupProxy } from "../utils/proxy.js";
 import { emptyTaskJson } from "../utils/task-json.js";
 
@@ -40,6 +41,7 @@ import {
   workflowMdTemplate,
   pullRequestTemplate,
 } from "../templates/trellis/index.js";
+import { agentsMdContent } from "../templates/markdown/index.js";
 
 import {
   ALL_MANAGED_DIRS,
@@ -76,6 +78,17 @@ interface ChangeAnalysis {
 
 type ConflictAction = "overwrite" | "skip" | "create-new";
 
+const CLAUDE_SETTINGS_PATH = ".claude/settings.json";
+const TRELLIS_BLOCK_START = "<!-- TRELLIS:START -->";
+const TRELLIS_BLOCK_END = "<!-- TRELLIS:END -->";
+const LEGACY_UNTRACKED_AGENTS_MD_BLOCK_HASHES = new Set<string>([
+  // v0.5.0-beta.17 and earlier wrote AGENTS.md but did not hash-track it.
+  // This hash is the pristine Trellis-managed block before the Subagents
+  // section was added, so old untouched projects can be updated without a
+  // false "modified by you" conflict.
+  "c1f511b1cfc1902f2147da159f09cc51f380b0c9e341cdb3ac5dea5233f3e307",
+]);
+
 // Paths that should never be touched (true user data)
 // spec/ is user-customized content created during init; update should never modify it
 const PROTECTED_PATHS = [
@@ -85,6 +98,89 @@ const PROTECTED_PATHS = [
   `${DIR_NAMES.WORKFLOW}/.developer`,
   `${DIR_NAMES.WORKFLOW}/.current-task`,
 ];
+
+function getTrellisManagedBlock(content: string): string | null {
+  const start = content.indexOf(TRELLIS_BLOCK_START);
+  if (start === -1) {
+    return null;
+  }
+
+  const end = content.indexOf(TRELLIS_BLOCK_END, start);
+  if (end === -1) {
+    return null;
+  }
+
+  return content.slice(start, end + TRELLIS_BLOCK_END.length);
+}
+
+function replaceTrellisManagedBlock(
+  existingContent: string,
+  templateContent: string,
+): string | null {
+  const existingStart = existingContent.indexOf(TRELLIS_BLOCK_START);
+  if (existingStart === -1) {
+    return null;
+  }
+
+  const existingEnd = existingContent.indexOf(TRELLIS_BLOCK_END, existingStart);
+  if (existingEnd === -1) {
+    return null;
+  }
+
+  const templateBlock = getTrellisManagedBlock(templateContent);
+  if (!templateBlock) {
+    return null;
+  }
+
+  return (
+    existingContent.slice(0, existingStart) +
+    templateBlock +
+    existingContent.slice(existingEnd + TRELLIS_BLOCK_END.length)
+  );
+}
+
+function buildAgentsMdTemplate(cwd: string): string {
+  const fullPath = path.join(cwd, FILE_NAMES.AGENTS);
+  if (!fs.existsSync(fullPath)) {
+    return agentsMdContent;
+  }
+
+  const existingContent = fs.readFileSync(fullPath, "utf-8");
+
+  // Existing file already has TRELLIS:START/END markers — replace just the
+  // managed block, preserving everything outside it.
+  const replaced = replaceTrellisManagedBlock(existingContent, agentsMdContent);
+  if (replaced !== null) {
+    return replaced;
+  }
+
+  // Existing file has no managed-block markers (pre-0.5.0-beta.18 project, or
+  // user hand-wrote AGENTS.md without ever running through Trellis). Append
+  // the template's managed block at the end so user content is preserved
+  // instead of clobbered.
+  const templateBlock = getTrellisManagedBlock(agentsMdContent);
+  if (!templateBlock) {
+    return agentsMdContent;
+  }
+  const trimmed = existingContent.replace(/\s+$/, "");
+  return `${trimmed}\n\n${templateBlock}\n`;
+}
+
+function isKnownUntrackedTemplate(
+  relativePath: string,
+  existingContent: string,
+): boolean {
+  if (relativePath !== FILE_NAMES.AGENTS) {
+    return false;
+  }
+
+  const managedBlock = getTrellisManagedBlock(existingContent);
+  if (!managedBlock) {
+    return false;
+  }
+
+  return LEGACY_UNTRACKED_AGENTS_MD_BLOCK_HASHES.has(computeHash(managedBlock));
+}
 
 /**
  * Check if a path is blocked by PROTECTED_PATHS
@@ -353,6 +449,44 @@ function needsCodexUpgrade(cwd: string): boolean {
   return Object.keys(hashes).some((key) => key.startsWith(".agents/skills/"));
 }
 
+function preserveExistingClaudeStatusLine(
+  cwd: string,
+  templates: Map<string, string>,
+): void {
+  const newSettingsContent = templates.get(CLAUDE_SETTINGS_PATH);
+  if (!newSettingsContent) return;
+
+  const settingsPath = path.join(cwd, CLAUDE_SETTINGS_PATH);
+  if (!fs.existsSync(settingsPath)) return;
+
+  try {
+    const existingSettings = JSON.parse(
+      fs.readFileSync(settingsPath, "utf-8"),
+    ) as Record<string, unknown>;
+
+    if (!Object.prototype.hasOwnProperty.call(existingSettings, "statusLine")) {
+      return;
+    }
+
+    const newSettings = JSON.parse(newSettingsContent) as Record<
+      string,
+      unknown
+    >;
+
+    if (Object.prototype.hasOwnProperty.call(newSettings, "statusLine")) {
+      return;
+    }
+
+    newSettings.statusLine = existingSettings.statusLine;
+    templates.set(
+      CLAUDE_SETTINGS_PATH,
+      `${JSON.stringify(newSettings, null, 2)}\n`,
+    );
+  } catch {
+    // Invalid local JSON is handled by the normal conflict path.
+  }
+}
+
 function collectTemplateFiles(
   cwd: string,
   extraPlatforms?: Set<AITool>,
@@ -392,6 +526,7 @@ function collectTemplateFiles(
   // workspace/index.md stays excluded — it's runtime-appended by add_session.py
   // (journal index) and has no script-parsed structure.
   files.set(".github/PULL_REQUEST_TEMPLATE.md", pullRequestTemplate);
+  files.set(FILE_NAMES.AGENTS, buildAgentsMdTemplate(cwd));
 
   // Platform-specific templates (only for configured platforms)
   for (const platformId of platforms) {
@@ -402,6 +537,8 @@ function collectTemplateFiles(
       }
     }
   }
+
+  preserveExistingClaudeStatusLine(cwd, files);
 
   // Apply update.skip from config.yaml (unless bypassed for breaking release)
   if (!bypassUpdateSkip) {
@@ -477,9 +614,13 @@ function analyzeChanges(
         const storedHash = hashes[relativePath];
         const currentHash = computeHash(existingContent);
 
-        if (storedHash && storedHash === currentHash) {
-          // Hash matches stored hash - user didn't modify, template was updated
-          // Safe to auto-update
+        if (
+          (storedHash && storedHash === currentHash) ||
+          (!storedHash &&
+            isKnownUntrackedTemplate(relativePath, existingContent))
+        ) {
+          // Either the tracked hash matches, or this is a known pristine template
+          // from before the path was hash-tracked. Safe to auto-update.
           change.status = "changed";
           result.autoUpdateFiles.push(change);
         } else {
@@ -493,6 +634,21 @@ function analyzeChanges(
   }
 
   return result;
+}
+
+function collectMissingAgentsMdHash(
+  changes: ChangeAnalysis,
+  hashes: TemplateHashes,
+): Map<string, string> {
+  const files = new Map<string, string>();
+
+  for (const file of changes.unchangedFiles) {
+    if (file.relativePath === FILE_NAMES.AGENTS && !hashes[file.relativePath]) {
+      files.set(file.relativePath, file.newContent);
+    }
+  }
+
+  return files;
 }
 
 /**
@@ -654,10 +810,11 @@ function backupFile(
  */
 const BACKUP_DIRS = ALL_MANAGED_DIRS;
 
-/**
- * Managed singleton template files outside managed platform directories.
- */
-const BACKUP_FILES = [".github/PULL_REQUEST_TEMPLATE.md"];
+/** Managed singleton template files outside managed platform directories. */
+const BACKUP_FILES = [
+  FILE_NAMES.AGENTS,
+  ".github/PULL_REQUEST_TEMPLATE.md",
+] as const;
 
 /**
  * Patterns to exclude from backup (user data that shouldn't be backed up)
@@ -838,7 +995,9 @@ function isDirectorySafeToReplace(
   if (files.length === 0) return true; // Empty directory is safe
 
   for (const fullPath of files) {
-    const relativePath = path.relative(cwd, fullPath);
+    // POSIX-normalize: hashes/templates keys are persisted as POSIX, but
+    // `path.relative` returns OS-native separators (backslash on Windows).
+    const relativePath = toPosix(path.relative(cwd, fullPath));
     const storedHash = hashes[relativePath];
     const templateContent = templates.get(relativePath);
 
@@ -1664,6 +1823,7 @@ export async function update(options: UpdateOptions): Promise<void> {
 
   // Analyze changes (pass hashes for modification detection)
   const changes = analyzeChanges(cwd, hashes, templates);
+  const missingAgentsMdHash = collectMissingAgentsMdHash(changes, hashes);
 
   // Print summary
   printChangeSummary(changes);
@@ -1702,6 +1862,10 @@ export async function update(options: UpdateOptions): Promise<void> {
     !hasPendingMigrations &&
     !hasSafeDeletes
   ) {
+    if (!options.dryRun && missingAgentsMdHash.size > 0) {
+      updateHashes(cwd, missingAgentsMdHash);
+    }
+
     if (isSameVersion) {
       console.log(chalk.green("✓ Already up to date!"));
     } else {
@@ -1793,19 +1957,22 @@ export async function update(options: UpdateOptions): Promise<void> {
     return;
   }
 
-  // Confirm
-  const { proceed } = await inquirer.prompt<{ proceed: boolean }>([
-    {
-      type: "confirm",
-      name: "proceed",
-      message: "Proceed?",
-      default: true,
-    },
-  ]);
+  // Batch-resolution flags are explicit consent for non-interactive runs.
+  // Prompting here breaks CI and `node ... update --force --migrate` smoke tests.
+  if (!options.force && !options.skipAll && !options.createNew) {
+    const { proceed } = await inquirer.prompt<{ proceed: boolean }>([
+      {
+        type: "confirm",
+        name: "proceed",
+        message: "Proceed?",
+        default: true,
+      },
+    ]);
 
-  if (!proceed) {
-    console.log(chalk.yellow("Update cancelled."));
-    return;
+    if (!proceed) {
+      console.log(chalk.yellow("Update cancelled."));
+      return;
+    }
   }
 
   // Create complete backup of all managed platform/workflow directories
@@ -1950,7 +2117,7 @@ export async function update(options: UpdateOptions): Promise<void> {
   updateVersionFile(cwd);
 
   // Update template hashes for new, auto-updated, and overwritten files
-  const filesToHash = new Map<string, string>();
+  const filesToHash = new Map<string, string>(missingAgentsMdHash);
   for (const file of changes.newFiles) {
     filesToHash.set(file.relativePath, file.newContent);
   }

@@ -31,37 +31,11 @@ interface CommandResult {
   commands?: string[][];
 }
 
-interface TextFile {
-  relativePath: string;
-  content: string;
-}
-
 function repoRoot(): string {
   return path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "../../../..",
   );
-}
-
-function collectMarkdownFiles(root: string): TextFile[] {
-  const files: TextFile[] = [];
-
-  function walk(dir: string): void {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath);
-      } else if (entry.name.endsWith(".md")) {
-        files.push({
-          relativePath: path.relative(root, fullPath).replace(/\\/g, "/"),
-          content: fs.readFileSync(fullPath, "utf-8"),
-        });
-      }
-    }
-  }
-
-  walk(root);
-  return files;
 }
 
 function readRepoText(relativePath: string): string {
@@ -469,33 +443,38 @@ describe("PR-first workflow templates", () => {
   });
 
   it("keeps dogfood copies aligned on post-merge reconcile guidance", () => {
-    const finishWork = getCommandTemplates().find(
-      (template) => template.name === "finish-work",
-    );
-    const generatedFinishWork = (finishWork?.content ?? "").replace(
-      /\{\{PYTHON_CMD\}\}/g,
-      "python3",
-    );
+    const localFinishWorkRefs = new Map([
+      [".claude/commands/trellis/finish-work.md", "/trellis:finish-work"],
+      [".cursor/commands/trellis-finish-work.md", "/trellis-finish-work"],
+      [".opencode/commands/trellis/finish-work.md", "/trellis:finish-work"],
+      [".agents/skills/trellis-finish-work/SKILL.md", "$finish-work"],
+      [
+        "packages/cli/src/templates/codex/skills/finish-work/SKILL.md",
+        "$finish-work",
+      ],
+      [
+        "packages/cli/src/templates/copilot/prompts/finish-work.prompt.md",
+        "/finish-work",
+      ],
+    ]);
 
-    for (const localPath of [
-      ".claude/commands/trellis/finish-work.md",
-      ".cursor/commands/trellis-finish-work.md",
-      ".agents/skills/trellis-finish-work/SKILL.md",
-    ]) {
-      expect(stripLeadingFrontmatter(readRepoText(localPath))).toBe(
-        generatedFinishWork,
+    for (const [localPath, commandRef] of localFinishWorkRefs) {
+      const content = stripLeadingFrontmatter(readRepoText(localPath));
+      expect(content).toContain("create-pr <task-name> --draft");
+      expect(content).toContain("sync-pr <task-name>");
+      expect(content).toContain("review-pr <task-name>");
+      expect(content).toContain("finish-pr <task-name>");
+      expect(content).toContain("Do not archive by default before merge");
+      expect(content).toContain("Local untracked or dirty files are a blocker");
+      expect(content).toContain(
+        "Do not archive or record the session until the local base branch matches `origin/<base-branch>`",
       );
+      expect(content).toContain(commandRef);
+      expect(content).not.toContain("{{CMD_REF");
     }
 
     expect(readRepoText(".trellis/workflow.md")).toBe(
       workflowMdTemplate.replace(/\r\n/g, "\n"),
-    );
-
-    const parallelPrompt = getAllPrompts().find(
-      (prompt) => prompt.name === "parallel",
-    );
-    expect(readRepoText(".claude/commands/trellis/parallel.md")).toBe(
-      stripLeadingFrontmatter(parallelPrompt?.content ?? ""),
     );
 
     const changedHookPaths = [
@@ -588,36 +567,36 @@ describe("PR-first workflow templates", () => {
     ).toBe(false);
   });
 
-  it("keeps local trellis-meta docs on removed-script references only as historical notes", () => {
+  it("keeps trellis-meta workflow docs on the current PR-first finish flow", () => {
     const root = repoRoot();
-    const staleReferencePattern =
-      /\.trellis\/scripts\/multi_agent|multi_agent\/(?:plan|start|status|create_pr|cleanup)\.py|task\.py init-context|common\/(?:registry|worktree)\.py|worktree\.yaml/;
-    const historicalContextPattern =
-      /historical|removed|no longer|not active|do not|does not use|replacement|current replacement/;
-    const violations: string[] = [];
 
     for (const metaDir of [
+      "packages/cli/src/templates/common/bundled-skills/trellis-meta",
       ".agents/skills/trellis-meta",
       ".claude/skills/trellis-meta",
+      ".cursor/skills/trellis-meta",
+      ".opencode/skills/trellis-meta",
     ]) {
-      for (const file of collectMarkdownFiles(path.join(root, metaDir))) {
-        const lines = file.content.split(/\r?\n/);
-        lines.forEach((line, index) => {
-          if (!staleReferencePattern.test(line)) {
-            return;
-          }
-          const context = lines
-            .slice(Math.max(0, index - 12), Math.min(lines.length, index + 3))
-            .join("\n")
-            .toLowerCase();
-          if (!historicalContextPattern.test(context)) {
-            violations.push(`${metaDir}/${file.relativePath}:${index + 1}`);
-          }
-        });
-      }
+      const workflowReference = fs.readFileSync(
+        path.join(root, metaDir, "references/local-architecture/workflow.md"),
+        "utf-8",
+      );
+      expect(workflowReference).toContain("PR-first repositories");
+      expect(workflowReference).toContain("Phase 3.4");
+      expect(workflowReference).toContain("PR handoff");
+      expect(workflowReference).toContain("post-merge reconcile");
+      expect(workflowReference).toContain("archive + journal");
     }
 
-    expect(violations).toEqual([]);
+    for (const removedPath of [
+      ".claude/commands/trellis/parallel.md",
+      ".claude/commands/trellis/start.md",
+      ".cursor/commands/trellis-start.md",
+      ".opencode/commands/trellis/parallel.md",
+      ".opencode/commands/trellis/start.md",
+    ]) {
+      expect(fs.existsSync(path.join(root, removedPath))).toBe(false);
+    }
   });
 
   it("keeps shipped start templates on the curated-context flow", () => {

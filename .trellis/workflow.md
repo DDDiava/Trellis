@@ -45,8 +45,9 @@ Every task has its own directory under `.trellis/tasks/{MM-DD-name}/` holding `p
 ```bash
 # Task lifecycle
 python3 ./.trellis/scripts/task.py create "<title>" [--slug <name>] [--parent <dir>]
-python3 ./.trellis/scripts/task.py start <name>          # set as current (writes .current-task, triggers after_start hooks)
-python3 ./.trellis/scripts/task.py finish                # clear current task (triggers after_finish hooks)
+python3 ./.trellis/scripts/task.py start <name>          # set active task (session-scoped when available)
+python3 ./.trellis/scripts/task.py current --source      # show active task and source
+python3 ./.trellis/scripts/task.py finish                # clear active task (triggers after_finish hooks)
 python3 ./.trellis/scripts/task.py archive <name>        # move to archive/{year-month}/
 python3 ./.trellis/scripts/task.py list [--mine] [--status <s>]
 python3 ./.trellis/scripts/task.py list-archive
@@ -87,7 +88,7 @@ Each parallel child task must end with a PR handoff: implementation and check in
 
 After child PRs are merged, run a parent-level post-merge reconcile in the parent/main workspace: fetch `origin`, update the base branch with a safe `git pull --ff-only origin <base-branch>`, verify every child PR merge commit is present locally, then clean up merged child worktrees and branches only after the local base branch is current and clean. Report the directory and branch that now contain the final current state.
 
-**Current-task mechanism**: `task.py start` writes the task path into `.trellis/.current-task`. Hook-capable platforms auto-inject this at session start, so the AI knows what you're working on without being told.
+**Current-task mechanism**: `task.py start` writes the task path through the active-task resolver into session/window-scoped runtime state under `.trellis/.runtime/sessions/`. If no context key is available from hook input, `TRELLIS_CONTEXT_ID`, or a platform-native session environment variable, there is no active task and `task.py start` fails with a session identity hint. `task.py finish` deletes the current session file. `task.py archive <task>` also deletes any runtime session files that still point at the archived task.
 
 ### Workspace System
 
@@ -103,7 +104,7 @@ python3 ./.trellis/scripts/add_session.py --title "Title" --commit "hash" --summ
 ### Context Script
 
 ```bash
-python3 ./.trellis/scripts/get_context.py                            # full session context
+python3 ./.trellis/scripts/get_context.py                            # full session runtime
 python3 ./.trellis/scripts/get_context.py --mode packages            # available packages + spec layers
 python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed guide for a workflow step
 ```
@@ -134,8 +135,11 @@ Phase 3: Finish  → sync/review the PR, reconcile local base after merge, then 
 - 3.1 Quality verification `[required · repeatable]`
 - 3.2 Debug retrospective `[on demand]`
 - 3.3 Spec update `[required · once]`
-- 3.4 Post-merge reconcile `[required after merge]`
-- 3.5 Archive and wrap-up reminder
+- 3.4 Commit changes `[required · once]`
+- 3.5 PR handoff `[required before human review]`
+- 3.6 Human review and merge `[external]`
+- 3.7 Post-merge reconcile `[required after merge]`
+- 3.8 Archive and journal `[required after reconcile]`
 
 ### Rules
 
@@ -222,7 +226,10 @@ python3 ./.trellis/scripts/task.py create "<task title>" --slug <name>
 python3 ./.trellis/scripts/task.py start <task-dir>
 ```
 
-Skip when: `.trellis/.current-task` already points to a task.
+`--slug` is the human-readable name only. Do not include the `MM-DD-` date
+prefix; `task.py create` adds that prefix automatically.
+
+Skip when `python3 ./.trellis/scripts/task.py current --source` already points to a task.
 
 #### 1.1 Requirement exploration `[required · repeatable]`
 
@@ -360,7 +367,7 @@ Spawn the implement sub-agent:
 - **Task description**: Implement the requirements per prd.md, consulting materials under `{TASK_DIR}/research/`; finish by running project lint and type-check
 
 The Codex sub-agent definition auto-handles the context load requirement:
-- Reads `.trellis/.current-task`, `prd.md`, and `info.md` if present
+- Resolves the active task with `task.py current --source`, then reads `prd.md` and `info.md` if present
 - Reads `implement.jsonl` and requires the agent to load each referenced spec file before coding
 
 [/Codex]
@@ -490,7 +497,79 @@ Load the `trellis-update-spec` skill and review whether this task produced new k
 
 Update the docs under `.trellis/spec/` accordingly. Even if the conclusion is "nothing to update", walk through the judgment.
 
-#### 3.4 Post-merge reconcile `[required after merge]`
+#### 3.4 Commit changes `[required · once]`
+
+The AI drives a batched commit of this task's code changes so `/finish-work` can run cleanly afterwards. Goal: produce work commits FIRST, then bookkeeping (archive + journal) commits land after — never interleaved.
+
+**Step-by-step**:
+
+1. **Inspect dirty state**:
+   ```bash
+   git status --porcelain
+   ```
+   Snapshot every dirty path. If the working tree is clean, skip to 3.5.
+
+2. **Learn commit style** from recent history (so drafted messages blend in):
+   ```bash
+   git log --oneline -5
+   ```
+   Note the prefix convention (`feat:` / `fix:` / `chore:` / `docs:` ...), language (中文/English), and length style.
+
+3. **Classify dirty files into two groups**:
+   - **AI-edited this session** — files you wrote/edited via Edit/Write/Bash tool calls in this session. You know what changed and why.
+   - **Unrecognized** — dirty files you did NOT touch this session (could be the user's manual edits, leftover WIP from a previous session, or unrelated work). Do NOT silently include these.
+
+4. **Draft a commit plan**. Group AI-edited files into logical commits (1 commit per coherent change unit, not 1 commit per file). Each entry: `<commit message>` + file list. List unrecognized files separately at the bottom.
+
+5. **Present the plan once, ask for one-shot confirmation**. Format:
+   ```
+   Proposed commits (in order):
+     1. <message>
+        - <file>
+        - <file>
+     2. <message>
+        - <file>
+
+   Unrecognized dirty files (NOT in any commit — confirm include/exclude):
+     - <file>
+     - <file>
+
+   Reply 'ok' / '行' to execute. Reply with edits, or '我自己来' / 'manual' to abort.
+   ```
+
+6. **On confirmation**: run `git add <files>` + `git commit -m "<msg>"` for each batch in order. Do not amend. Do not push.
+
+7. **On rejection** (user replies "不行" / "我自己来" / "manual" / any pushback on the plan): stop. Do not attempt a second plan. The user will commit by hand; you skip ahead to 3.5 once they confirm.
+
+**Rules**:
+- No `git commit --amend` anywhere — three-stage three-commit flow (work commits → archive commit → journal commit).
+- Never push to remote in this step.
+- If the user wants different message wording but accepts the file grouping, edit the message and re-confirm once — but if they reject the grouping, exit to manual mode.
+- The batched plan is one prompt; do not prompt per commit.
+
+#### 3.5 PR handoff `[required before human review]`
+
+Prepare the task PR without making GitHub a hard dependency:
+
+```bash
+python3 ./.trellis/scripts/task.py sync-pr <task-name>
+python3 ./.trellis/scripts/task.py review-pr <task-name>
+python3 ./.trellis/scripts/task.py finish-pr <task-name>
+```
+
+If no PR has been created yet, run:
+
+```bash
+python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
+```
+
+For local-only or unauthenticated GitHub environments, leave the generated PR body, review artifact, task metadata, and exact manual push/PR commands in the task directory. Stop here for human review; do not archive before merge.
+
+#### 3.6 Human review and merge `[external]`
+
+The user reviews and merges the PR, or explicitly confirms local-only completion. A ready PR is not completed work for archive purposes; it is waiting for human review.
+
+#### 3.7 Post-merge reconcile `[required after merge]`
 
 After the PR is merged, make the local base workspace current before archiving or recording the session. Use the PR base branch or `task.json.base_branch`; this is usually `main`.
 
@@ -530,9 +609,9 @@ git branch --show-current
 
 Report the final current-state directory and branch to the user.
 
-#### 3.5 Archive and wrap-up reminder
+#### 3.8 Archive and journal `[required after reconcile]`
 
-After the above, remind the user they can run `/finish-work` to prepare or update the PR for human review. Do not archive by default before merge. After the PR is merged, post-merge reconcile is complete, and the local base branch matches `origin/<base-branch>`, archive the task and record the session.
+After the PR is merged, post-merge reconcile is complete, and the local base branch matches `origin/<base-branch>`, archive the task and record the session. Do not archive by default before merge.
 
 ---
 
@@ -550,10 +629,11 @@ After the above, remind the user they can run `/finish-work` to prepare or updat
 
 [workflow-state:no_task]
 No active task.
-Trigger words in the user message that REQUIRE creating a task (non-negotiable, do NOT self-exempt): 重构 / 抽成 / 独立 / 分发 / 拆出来 / 搞一个 / 做成 / 接入 / 集成 / refactor / rewrite / extract / productize / publish / build X / design Y.
-Task is NOT required ONLY if ALL three hold: (a) zero file writes this turn, (b) answer fits in one reply with no multi-round plan, (c) no research beyond reading 1-2 repo files.
-When in doubt: create task. Over-tasking is cheap; under-tasking leaks plans and research into main context.
+Trigger words in the user message that suggest creating a task: 重构 / 抽成 / 独立 / 分发 / 拆出来 / 搞一个 / 做成 / 接入 / 集成 / refactor / rewrite / extract / productize / publish / build X / design Y.
+Task is NOT required if ALL three hold: (a) zero file writes this turn, (b) answer fits in one reply with no multi-round plan, (c) no research beyond reading 1-2 repo files.
+When in doubt and none of the override phrases below apply: prefer creating a task — over-tasking is cheap; under-tasking leaks plans and research into main context.
 Flow: load `trellis-brainstorm` skill → it creates the task via `python3 ./.trellis/scripts/task.py create` and drives requirements Q&A. For research-heavy work (tool comparison, docs, cross-platform survey), spawn `trellis-research` sub-agents via Task tool — NEVER do 3+ inline WebFetch/WebSearch/`gh api` calls in the main conversation.
+User override (per-turn escape hatch): if the user's CURRENT message contains an explicit opt-out phrase ("跳过 trellis" / "别走流程" / "小修一下" / "直接改" / "先别建任务" / "skip trellis" / "no task" / "just do it" / "don't create a task"), honor it for this turn — briefly acknowledge ("好，本轮跳过 trellis 流程"), then proceed without creating a task. The override is per-turn only and does not carry forward; do NOT invent an override the user did not say.
 [/workflow-state:no_task]
 
 [workflow-state:planning]
@@ -564,9 +644,11 @@ Research belongs in `{task_dir}/research/*.md`, written by `trellis-research` su
 [workflow-state:in_progress]
 Flow: trellis-implement → trellis-check → trellis-update-spec → finish
 Next required action: inspect conversation history + git status, then execute the next uncompleted step in that sequence.
-For agent-capable platforms, do NOT edit code in the main session; dispatch `trellis-implement` for implementation and dispatch `trellis-check` before reporting completion.
+For agent-capable platforms, the default is to dispatch `trellis-implement` for implementation and `trellis-check` before reporting completion — do not edit code in the main session by default.
+Use the exact Trellis agent type names when spawning sub-agents: `trellis-implement`, `trellis-check`, or `trellis-research`. Generic/default/generalPurpose sub-agents do not receive `implement.jsonl` / `check.jsonl` injection.
+User override (per-turn escape hatch): if the user's CURRENT message explicitly tells the main session to handle it directly ("你直接改" / "别派 sub-agent" / "main session 写就行" / "do it inline" / "不用 sub-agent"), honor it for this turn and edit code directly. Per-turn only; do not carry forward; do NOT invent an override the user did not say.
 [/workflow-state:in_progress]
 
 [workflow-state:completed]
-User merges or confirms local-only completion; run post-merge reconcile first, then archive only after the local base branch is current.
+Code should already be committed via Phase 3.4 and handed off through PR review. If the PR is not merged yet, sync/review/finish the PR and wait for human review; do not archive. After the user merges or confirms local-only completion, run post-merge reconcile first, then archive and journal only after the local base branch is current and clean.
 [/workflow-state:completed]

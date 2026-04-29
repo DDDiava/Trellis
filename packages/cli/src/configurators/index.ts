@@ -37,9 +37,11 @@ import { configurePi, collectPiTemplates } from "./pi.js";
 import {
   resolvePlaceholders,
   resolveAllAsSkills,
+  resolveBundledSkills,
   resolveCommands,
   resolveSkills,
   wrapWithCommandFrontmatter,
+  collectSkillTemplates,
   applyPullBasedPreludeMarkdown,
   applyPullBasedPreludeToml,
 } from "./shared.js";
@@ -81,7 +83,10 @@ import {
   getSettingsTemplate as getGeminiSettings,
 } from "../templates/gemini/index.js";
 import { getAllAgents as getKiroAgents } from "../templates/kiro/index.js";
-import { getSharedHookScripts } from "../templates/shared-hooks/index.js";
+import {
+  getSharedHookScriptsForPlatform,
+  type SharedHookPlatform,
+} from "../templates/shared-hooks/index.js";
 
 // =============================================================================
 // Platform Functions Registry
@@ -98,29 +103,20 @@ interface PlatformFunctions {
  * Platform functions registry — maps each AITool to its behavior.
  * When adding a new platform, add an entry here.
  */
-/** Helper: collect shared hook scripts for a platform.
- *  `exclude` omits specific hooks (e.g. class-2 platforms skip
- *  inject-subagent-context.py because their platform hooks can't inject
- *  sub-agent prompts — sub-agents pull context via prelude instead).
+/** Helper: collect the shared hook scripts that `platform` actually
+ *  registers. Keyed off SHARED_HOOKS_BY_PLATFORM so runtime install
+ *  (writeSharedHooks) and update diff (collectSharedHooks) never drift.
  */
 function collectSharedHooks(
   hooksPath: string,
-  options: { exclude?: readonly string[] } = {},
+  platform: SharedHookPlatform,
 ): Map<string, string> {
   const files = new Map<string, string>();
-  const exclude = new Set(options.exclude ?? []);
-  for (const hook of getSharedHookScripts()) {
-    if (exclude.has(hook.name)) continue;
+  for (const hook of getSharedHookScriptsForPlatform(platform)) {
     files.set(`${hooksPath}/${hook.name}`, hook.content);
   }
   return files;
 }
-
-/** Class-2 (pull-based) platforms: hooks that should NOT be installed
- *  because their platform hook can't inject sub-agent prompts — sub-agents
- *  pull task context themselves via the prelude written into agent defs.
- */
-const PULL_BASED_HOOK_EXCLUDE = ["inject-subagent-context.py"] as const;
 
 /** Helper: collect commands + skills for "both" platforms */
 function collectBothTemplates(
@@ -134,8 +130,12 @@ function collectBothTemplates(
     const filePath = cmdPath(cmd.name);
     files.set(filePath, wrapCmd ? wrapCmd(filePath, cmd.content) : cmd.content);
   }
-  for (const skill of resolveSkills(ctx)) {
-    files.set(`${skillRoot}/${skill.name}/SKILL.md`, skill.content);
+  for (const [filePath, content] of collectSkillTemplates(
+    skillRoot,
+    resolveSkills(ctx),
+    resolveBundledSkills(ctx),
+  )) {
+    files.set(filePath, content);
   }
   return files;
 }
@@ -153,7 +153,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const agent of getClaudeAgents()) {
         files.set(`.claude/agents/${agent.name}.md`, agent.content);
       }
-      for (const [k, v] of collectSharedHooks(".claude/hooks")) {
+      for (const [k, v] of collectSharedHooks(".claude/hooks", "claude")) {
         files.set(k, v);
       }
       const settings = getClaudeSettings();
@@ -175,7 +175,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const agent of getCursorAgents()) {
         files.set(`.cursor/agents/${agent.name}.md`, agent.content);
       }
-      for (const [k, v] of collectSharedHooks(".cursor/hooks")) {
+      for (const [k, v] of collectSharedHooks(".cursor/hooks", "cursor")) {
         files.set(k, v);
       }
       files.set(
@@ -193,8 +193,13 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
     configure: configureCodex,
     collectTemplates: () => {
       const files = new Map<string, string>();
-      for (const s of resolveAllAsSkills(AI_TOOLS.codex.templateContext)) {
-        files.set(`.agents/skills/${s.name}/SKILL.md`, s.content);
+      const ctx = AI_TOOLS.codex.templateContext;
+      for (const [filePath, content] of collectSkillTemplates(
+        ".agents/skills",
+        resolveAllAsSkills(ctx),
+        resolveBundledSkills(ctx),
+      )) {
+        files.set(filePath, content);
       }
       for (const skill of getCodexPlatformSkills()) {
         files.set(`.codex/skills/${skill.name}/SKILL.md`, skill.content);
@@ -205,10 +210,8 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const hook of getCodexHooks()) {
         files.set(`.codex/hooks/${hook.name}`, hook.content);
       }
-      // Shared hooks (inject-workflow-state.py etc.) — mirror configureCodex
-      for (const [k, v] of collectSharedHooks(".codex/hooks", {
-        exclude: ["session-start.py", "inject-subagent-context.py"],
-      })) {
+      // Shared hooks (inject-workflow-state.py only) — mirror configureCodex
+      for (const [k, v] of collectSharedHooks(".codex/hooks", "codex")) {
         files.set(k, v);
       }
       files.set(
@@ -233,8 +236,13 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
     configure: configureKiro,
     collectTemplates: () => {
       const files = new Map<string, string>();
-      for (const s of resolveAllAsSkills(AI_TOOLS.kiro.templateContext)) {
-        files.set(`.kiro/skills/${s.name}/SKILL.md`, s.content);
+      const ctx = AI_TOOLS.kiro.templateContext;
+      for (const [filePath, content] of collectSkillTemplates(
+        ".kiro/skills",
+        resolveAllAsSkills(ctx),
+        resolveBundledSkills(ctx),
+      )) {
+        files.set(filePath, content);
       }
       for (const agent of getKiroAgents()) {
         files.set(
@@ -242,7 +250,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
           resolvePlaceholders(agent.content),
         );
       }
-      for (const [k, v] of collectSharedHooks(".kiro/hooks")) {
+      for (const [k, v] of collectSharedHooks(".kiro/hooks", "kiro")) {
         files.set(k, v);
       }
       return files;
@@ -257,15 +265,17 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
         const toml = `description = "Trellis: ${cmd.name}"\n\nprompt = """\n${cmd.content}\n"""\n`;
         files.set(`.gemini/commands/trellis/${cmd.name}.toml`, toml);
       }
-      for (const skill of resolveSkills(ctx)) {
-        files.set(`.gemini/skills/${skill.name}/SKILL.md`, skill.content);
+      for (const [filePath, content] of collectSkillTemplates(
+        ".gemini/skills",
+        resolveSkills(ctx),
+        resolveBundledSkills(ctx),
+      )) {
+        files.set(filePath, content);
       }
       for (const agent of applyPullBasedPreludeMarkdown(getGeminiAgents())) {
         files.set(`.gemini/agents/${agent.name}.md`, agent.content);
       }
-      for (const [k, v] of collectSharedHooks(".gemini/hooks", {
-        exclude: PULL_BASED_HOOK_EXCLUDE,
-      })) {
+      for (const [k, v] of collectSharedHooks(".gemini/hooks", "gemini")) {
         files.set(k, v);
       }
       files.set(
@@ -308,9 +318,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const agent of applyPullBasedPreludeMarkdown(getQoderAgents())) {
         files.set(`.qoder/agents/${agent.name}.md`, agent.content);
       }
-      for (const [k, v] of collectSharedHooks(".qoder/hooks", {
-        exclude: PULL_BASED_HOOK_EXCLUDE,
-      })) {
+      for (const [k, v] of collectSharedHooks(".qoder/hooks", "qoder")) {
         files.set(k, v);
       }
       const settings = getQoderSettings();
@@ -332,7 +340,10 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const agent of getCodebuddyAgents()) {
         files.set(`.codebuddy/agents/${agent.name}.md`, agent.content);
       }
-      for (const [k, v] of collectSharedHooks(".codebuddy/hooks")) {
+      for (const [k, v] of collectSharedHooks(
+        ".codebuddy/hooks",
+        "codebuddy",
+      )) {
         files.set(k, v);
       }
       const settings = getCodebuddySettings();
@@ -351,19 +362,24 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const cmd of resolveCommands(ctx)) {
         files.set(`.github/prompts/${cmd.name}.prompt.md`, cmd.content);
       }
-      for (const skill of resolveSkills(ctx)) {
-        files.set(`.github/skills/${skill.name}/SKILL.md`, skill.content);
+      for (const [filePath, content] of collectSkillTemplates(
+        ".github/skills",
+        resolveSkills(ctx),
+        resolveBundledSkills(ctx),
+      )) {
+        files.set(filePath, content);
       }
       // Copilot's own session-start hook
       for (const hook of getCopilotHooks()) {
         files.set(`.github/copilot/hooks/${hook.name}`, hook.content);
       }
-      // Shared hooks: skip session-start (Copilot has its own) and
-      // inject-subagent-context (Copilot is class-2 / pull-based).
-      for (const hook of getSharedHookScripts()) {
-        if (hook.name === "session-start.py") continue;
-        if (hook.name === "inject-subagent-context.py") continue;
-        files.set(`.github/copilot/hooks/${hook.name}`, hook.content);
+      // Shared hooks (inject-workflow-state.py only). Copilot bundles its own
+      // session-start.py above; sub-agent context is pull-based (class-2).
+      for (const [k, v] of collectSharedHooks(
+        ".github/copilot/hooks",
+        "copilot",
+      )) {
+        files.set(k, v);
       }
       // Agents: reuse Cursor content + prepend pull-based prelude
       for (const agent of applyPullBasedPreludeMarkdown(getCursorAgents())) {
@@ -386,7 +402,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const droid of getDroidDroids()) {
         files.set(`.factory/droids/${droid.name}.md`, droid.content);
       }
-      for (const [k, v] of collectSharedHooks(".factory/hooks")) {
+      for (const [k, v] of collectSharedHooks(".factory/hooks", "droid")) {
         files.set(k, v);
       }
       const settings = getDroidSettings();

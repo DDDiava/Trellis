@@ -1731,3 +1731,210 @@ AGENTS.md template referenced /trellis:start which filterCommands strips on agen
 ### Next Steps
 
 - None - task complete
+
+
+## Session 131: git-backed private registry init
+
+**Date**: 2026-04-27
+**Task**: git-backed private registry init
+**Branch**: `feat/v0.5.0-beta`
+
+### Summary
+
+实现 --registry 的 git-backed 探测和下载路径，让私有/自托管 GitLab marketplace 可复用本机 Git 凭据；补齐 mode detection、backend 传递、错误分类、测试覆盖，并归档任务。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f931aa3` | (see git log) |
+| `f968c5c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 132: Windows path normalization (#194 #198)
+
+**Date**: 2026-04-27
+**Task**: Windows path normalization (#194 #198)
+**Branch**: `feat/v0.5.0-beta`
+
+### Summary
+
+Fix two correlated cross-platform bugs in template hash dictionary: OS-native path separators in JSON keys (#198) and CRLF-vs-LF hash mismatch (#194). Add toPosix() utility, LF-normalize content before hashing, upgrade .template-hashes.json to a {__version: 2, hashes} envelope with safe legacy-discard migration. Wrap opencode collector + update.ts path.relative lookup at hash-key boundaries. Spec: extend cross-platform-thinking-guide.md with logical-key vs fs-path boundary, hash-time line-ending normalization, and __version schema sentinel pattern. 12 new tests, 750 pass / 5 baseline-fail.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ccfcbdf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 133: task.py archive input contract alignment
+
+**Date**: 2026-04-27
+**Task**: task.py archive input contract alignment
+**Branch**: `feat/v0.5.0-beta`
+
+### Summary
+
+Align task.py archive subcommand with other dir-style subcommands by routing through resolve_task_dir instead of find_task_by_name. Archive now accepts slug, relative path, and absolute path uniformly. Sync template mirror under packages/cli/src/templates/trellis/scripts/. Add regression test covering all three input forms.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `431edbe` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 134: Pi subagent config and bundled meta skill
+
+**Date**: 2026-04-28
+**Task**: Pi subagent config and bundled meta skill
+**Branch**: `feat/v0.5.0-beta`
+
+### Summary
+
+Installed trellis-meta as a bundled built-in skill, hardened Pi subagent launch/config behavior, updated local subagent context wiring, and archived completed tasks.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f3a273b` | (see git log) |
+| `b37cb1b` | (see git log) |
+| `5dff2ad` | (see git log) |
+| `3fa969c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 135: Fix parent-child task progress regression on child archive
+
+**Date**: 2026-04-29
+**Task**: Fix parent-child task progress regression on child archive
+**Branch**: `feat/v0.5.0-beta`
+
+### Summary
+
+Children list was being pruned on archive, shrinking both numerator and denominator in children_progress and hiding completed work. Stop pruning; treat archived (missing-from-active) entries as done. Sync to template source. Document invariant in script-conventions spec.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e25d7db` | (see git log) |
+| `4d550d0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 136: Redesign Phase 3.4 commit + /finish-work refocuses on record-session
+
+**Date**: 2026-04-29
+**Task**: Redesign Phase 3.4 commit + /finish-work refocuses on record-session
+**Branch**: `feat/v0.5.0-beta`
+
+### Summary
+
+Re-brainstormed the rolled-back 04-22 task and locked in option 2: workflow.md gains Phase 3.4 (AI-driven batched commit with one-shot user confirmation), and /trellis:finish-work refocuses on archive + journal, refusing to run on a dirty working tree. Updated workflow.md (canonical + local + bundled-skill copy), rewrote finish-work skill across common/copilot/codex variants, refreshed the [workflow-state:completed] breadcrumb in workflow.md and the four hook fallbacks. Used CMD_REF placeholder so platform-specific prefixes resolve correctly. Side fix: vitest test/setup.ts strips host-shell TRELLIS_CONTEXT_ID and OPENCODE_RUN_ID env vars at process start, eliminating 6 deterministic test failures caused by Claude/OpenCode session env leaking into the resolver. Documented the env-isolation pattern in unit-test/conventions.md.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d2849f9` | (see git log) |
+| `a97b649` | (see git log) |
+| `ff07846` | (see git log) |
+| `1aa2a13` | (see git log) |
+| `446379e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

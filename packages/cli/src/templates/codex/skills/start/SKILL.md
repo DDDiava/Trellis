@@ -272,7 +272,7 @@ Skip seed rows without a `file` field. Do not run the removed context initialize
 python3 ./.trellis/scripts/task.py start "$TASK_DIR"
 ```
 
-This sets `.current-task` so hooks can inject context.
+This sets the active task through Trellis' session resolver so hooks can inject context for this AI session. If the command fails because no session identity is available, rerun it from an IDE/session that exposes session identity or set `TRELLIS_CONTEXT_ID`.
 
 ---
 

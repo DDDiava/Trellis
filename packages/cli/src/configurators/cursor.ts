@@ -5,6 +5,7 @@ import {
   resolvePlaceholders,
   resolveCommands,
   resolveSkills,
+  resolveBundledSkills,
   writeSkills,
   writeAgents,
   writeSharedHooks,
@@ -33,9 +34,13 @@ export async function configureCursor(cwd: string): Promise<void> {
     );
   }
 
-  await writeSkills(path.join(configRoot, "skills"), resolveSkills(ctx));
+  await writeSkills(
+    path.join(configRoot, "skills"),
+    resolveSkills(ctx),
+    resolveBundledSkills(ctx),
+  );
   await writeAgents(path.join(configRoot, "agents"), getAllAgents());
-  await writeSharedHooks(path.join(configRoot, "hooks"));
+  await writeSharedHooks(path.join(configRoot, "hooks"), "cursor");
 
   // Hooks config (separate file, not settings.json)
   await writeFile(
