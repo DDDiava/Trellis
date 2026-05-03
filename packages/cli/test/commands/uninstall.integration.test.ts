@@ -208,10 +208,12 @@ describe("uninstall() integration", () => {
     // empty-platform-root cleanup.
     await init({ yes: true, kilo: true, force: true });
 
-    // Detect kilo's actual config dir from manifest entries.
+    // Detect kilo's actual config dir from manifest entries. Kilo init also
+    // writes the shared GitHub PR template, so don't infer the platform root
+    // from the first non-.trellis manifest entry.
     const hashesBefore = loadHashes(tmpDir);
     const kiloEntry = Object.keys(hashesBefore).find(
-      (p) => !p.startsWith(".trellis/") && p !== "AGENTS.md",
+      (p) => p.startsWith(".kilocode/"),
     );
     if (!kiloEntry) throw new Error("test fixture: no kilo entries found");
     const kiloRoot = kiloEntry.split("/")[0];

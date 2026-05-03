@@ -476,6 +476,10 @@ describe("PR-first workflow templates", () => {
     expect(readRepoText(".trellis/workflow.md")).toBe(
       workflowMdTemplate.replace(/\r\n/g, "\n"),
     );
+    expect(workflowMdTemplate).toContain("post-merge reconcile");
+    expect(workflowMdTemplate).toContain(
+      "only after the local base branch is current",
+    );
 
     const changedHookPaths = [
       ".claude/hooks/inject-workflow-state.py",
@@ -495,10 +499,9 @@ describe("PR-first workflow templates", () => {
     for (const hookPath of changedHookPaths) {
       const content = readRepoText(hookPath);
       const normalizedContent = content.replace(/["'`+]/g, " ").replace(/\s+/g, " ");
-      expect(normalizedContent).toContain("post-merge reconcile");
-      expect(normalizedContent).toContain(
-        "only after the local base branch is current",
-      );
+      if (hookPath.includes("inject-workflow-state")) {
+        expect(normalizedContent).toContain("workflow.md");
+      }
       expect(content).not.toMatch(
         /User commits changes; then run task\.py archive|Next: Archive with `python3 \.\/\.trellis\/scripts\/task\.py archive/,
       );

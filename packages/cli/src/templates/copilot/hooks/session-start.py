@@ -228,7 +228,29 @@ _BREADCRUMB_TAG_RE = re.compile(
 
 
 def _strip_breadcrumb_tag_blocks(content: str) -> str:
-    return _BREADCRUMB_TAG_RE.sub("", content)
+    output = []
+    cursor = 0
+    open_re = re.compile(r"\[workflow-state:([A-Za-z0-9_-]+)\]")
+
+    while True:
+        match = open_re.search(content, cursor)
+        if match is None:
+            output.append(content[cursor:])
+            break
+
+        status = match.group(1)
+        close_marker = f"[/workflow-state:{status}]"
+        close_start = content.find(close_marker, match.end())
+        if close_start == -1:
+            output.append(content[cursor:])
+            break
+
+        output.append(content[cursor:match.start()])
+        cursor = close_start + len(close_marker)
+        if cursor < len(content) and content[cursor : cursor + 1] == "\n":
+            cursor += 1
+
+    return "".join(output)
 
 
 def _build_workflow_toc(workflow_path: Path) -> str:

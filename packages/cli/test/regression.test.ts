@@ -4145,7 +4145,7 @@ describe("regression: research agent persists findings to task dir", () => {
       ),
       "utf-8",
     );
-    const fm = content.split("---\n")[1] ?? "";
+    const fm = content.split(/---\r?\n/)[1] ?? "";
     // OpenCode uses YAML permission block, not Claude-style `tools:` list
     expect(fm).toMatch(/^\s*write:\s*allow\s*$/m);
     expect(fm).toMatch(/^\s*edit:\s*allow\s*$/m);
