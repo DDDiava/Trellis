@@ -1,42 +1,58 @@
 ---
 name: trellis-finish-work
-description: "Prepare the current Trellis task for PR review, or after merge reconcile the base branch, archive the task, and record the session. Use when code is written and needs PR handoff or final post-merge cleanup."
+description: "Prepare the current Trellis task for PR review: run final checks, create or sync a draft PR, write a local review artifact, and mark the PR ready for human review. Use when code is written and needs PR handoff."
 ---
 
 # Finish Work
 
-Prepare or complete the current Trellis task's PR-first handoff. Code commits are handled in workflow Phase 3.4 before this skill archives anything.
+Prepare or complete the current Trellis task's PR-first handoff. Code commits are handled in workflow Phase 3.4 before this command archives anything.
 
 ## Step 1: Survey Current State
 
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode record
+python ./.trellis/scripts/get_context.py --mode record
 ```
 
-Use active tasks, git status, and recent commits from the output. If other completed-but-unarchived tasks appear, ask once whether to include them in this cleanup round. Default is no.
+This prints active tasks, git status, and recent commits. Use the recent work-commit hashes later for `add_session.py --commit`.
+
+If other completed-but-unarchived tasks appear, ask once whether to include them in this cleanup round. Default is no.
 
 ## Step 2: Sanity Check Code Is Committed
 
-Run `git status --porcelain`. Ignore `.trellis/workspace/` and `.trellis/tasks/`; those are managed by archive/journal scripts. If anything else is dirty, stop and send the user back to workflow Phase 3.4. Do not commit from this skill.
+Run:
+
+```bash
+git status --porcelain
+```
+
+Filter out paths under `.trellis/workspace/` and `.trellis/tasks/`; those are managed by archive/journal scripts. If anything else is dirty, stop with:
+
+> "Working tree has uncommitted code changes. Return to workflow Phase 3.4 to commit them before running `$finish-work`."
+
+Do not run `git commit` here. Do not prompt for an ad hoc commit from this command.
 
 ## Step 3: Prepare Or Update The PR
 
-If the task PR is not ready for human review yet:
+If the task PR is not ready for human review yet, prepare it now:
 
 ```bash
-python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
-python3 ./.trellis/scripts/task.py sync-pr <task-name>
-python3 ./.trellis/scripts/task.py review-pr <task-name>
-python3 ./.trellis/scripts/task.py finish-pr <task-name>
+python ./.trellis/scripts/task.py create-pr <task-name> --draft
+python ./.trellis/scripts/task.py sync-pr <task-name>
+python ./.trellis/scripts/task.py review-pr <task-name>
+python ./.trellis/scripts/task.py finish-pr <task-name>
 ```
 
-If GitHub CLI or authentication is unavailable, keep the local fallback artifacts (`pr-body.md`, `review/pr-review-*.md`, task metadata, and manual push/PR commands) and report them to the user. If the PR is prepared but not merged, stop and tell the user to merge it, then run `$finish-work` again so post-merge reconcile can happen before archive/journal.
+If GitHub CLI or authentication is unavailable, keep the local fallback artifacts (`pr-body.md`, `review/pr-review-*.md`, task metadata, and manual push/PR commands) and report them to the user.
+
+If the PR is prepared but not merged, stop here and tell the user:
+
+> "The PR is ready for human review. Merge it, then run `$finish-work` again so I can reconcile the local base branch before archiving or journaling."
 
 Do not archive by default before merge. Do not archive before merge unless the user explicitly confirms local-only completion.
 
 ## Step 4: Post-Merge Reconcile
 
-Run this only after the user says the PR was merged, or explicitly confirms local-only completion:
+Run this only after the user says the PR was merged, or explicitly confirms local-only completion. Use the PR base branch or `task.json.base_branch`; this is usually `main`.
 
 ```bash
 git fetch origin
@@ -55,18 +71,25 @@ git rev-parse <base-branch>
 git rev-parse origin/<base-branch>
 ```
 
-Verify local and origin SHAs match. Do not archive or record the session until the local base branch matches `origin/<base-branch>`. For parallel child PRs, verify each child merge commit is an ancestor of the base branch before cleaning up child worktrees or branches.
+Verify the local and origin SHAs match. Do not archive or record the session until the local base branch matches `origin/<base-branch>`. For parallel child PRs, verify each child merge commit is an ancestor of the base branch before cleaning up child worktrees or branches.
 
-## Step 5: Archive And Journal
+## Step 5: Archive Task(s)
 
-After reconcile is clean and current:
+After post-merge reconcile is clean and current:
 
 ```bash
-python3 ./.trellis/scripts/task.py archive <task-name>
-python3 ./.trellis/scripts/add_session.py \
+python ./.trellis/scripts/task.py archive <task-name>
+```
+
+Archive the current active task plus any extra tasks the user confirmed in Step 1. Each archive produces a `chore(task): archive ...` commit through the script's auto-commit.
+
+## Step 6: Record Session Journal
+
+```bash
+python ./.trellis/scripts/add_session.py \
   --title "Session Title" \
   --commit "hash1,hash2" \
   --summary "Brief summary"
 ```
 
-Use Phase 3.4 work-commit hashes for `--commit`; do not include archive commit hashes.
+Use the work-commit hashes produced in Phase 3.4. Do not include archive commit hashes from Step 5. Final git log order: work commits -> archive commit(s) -> `chore: record journal`.

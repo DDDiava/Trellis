@@ -17,6 +17,7 @@ import {
   taskScript,
   workflowMdTemplate,
 } from "../../src/templates/trellis/index.js";
+import { replacePythonCommandLiterals } from "../../src/configurators/shared.js";
 import { emptyTaskJson } from "../../src/utils/task-json.js";
 
 const pythonCommand = process.platform === "win32" ? "python" : "python3";
@@ -474,7 +475,7 @@ describe("PR-first workflow templates", () => {
     }
 
     expect(readRepoText(".trellis/workflow.md")).toBe(
-      workflowMdTemplate.replace(/\r\n/g, "\n"),
+      replacePythonCommandLiterals(workflowMdTemplate).replace(/\r\n/g, "\n"),
     );
     expect(workflowMdTemplate).toContain("post-merge reconcile");
     expect(workflowMdTemplate).toContain(

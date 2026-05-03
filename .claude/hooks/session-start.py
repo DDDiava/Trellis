@@ -234,7 +234,7 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
             "Status: NO ACTIVE TASK\n"
             f"Source: {active.source}\n"
             "Next-Action: After the user describes their intent, load skill `trellis-brainstorm` "
-            "to clarify requirements and create a task via `python3 ./.trellis/scripts/task.py create`.\n"
+            "to clarify requirements and create a task via `python ./.trellis/scripts/task.py create`.\n"
             "Research reminder: for research-heavy tasks (comparing tools, reading external docs, "
             "cross-platform surveys), spawn `trellis-research` sub-agents via the Task tool — "
             "they persist findings to `{TASK_DIR}/research/*.md` and keep main context clean. "
@@ -252,7 +252,7 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
         return (
             f"Status: STALE POINTER\nTask: {task_ref}\n"
             f"Source: {active.source}\n"
-            f"Next-Action: Run `python3 ./.trellis/scripts/task.py finish` to clear the stale pointer, "
+            f"Next-Action: Run `python ./.trellis/scripts/task.py finish` to clear the stale pointer, "
             "then ask the user what to work on next."
         )
 
@@ -275,7 +275,7 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
             f"Source: {active.source}\n"
             f"Next-Action: Load skill `trellis-update-spec` to capture learnings, "
             "then run the post-merge reconcile from `.trellis/workflow.md`. "
-            f"Archive with `python3 ./.trellis/scripts/task.py archive {task_dir.name}` "
+            f"Archive with `python ./.trellis/scripts/task.py archive {task_dir.name}` "
             "only after the local base branch is current."
         )
 
@@ -302,8 +302,8 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
             "Next-Action: Curate `implement.jsonl` and `check.jsonl` with the spec + research files "
             "the Phase 2 sub-agents will need. Only spec paths (`.trellis/spec/**/*.md`) and research "
             "files (`{TASK_DIR}/research/*.md`) — no code paths. Run "
-            "`python3 ./.trellis/scripts/get_context.py --mode packages` to list available specs, "
-            "then edit the jsonl files or use `python3 ./.trellis/scripts/task.py add-context`. "
+            "`python ./.trellis/scripts/get_context.py --mode packages` to list available specs, "
+            "then edit the jsonl files or use `python ./.trellis/scripts/task.py add-context`. "
             "See `.trellis/workflow.md` Phase 1.3 for details."
         )
 
@@ -712,7 +712,7 @@ Read and follow all instructions below carefully.
 
     output.write(
         "Discover more via: "
-        "`python3 ./.trellis/scripts/get_context.py --mode packages`\n"
+        "`python ./.trellis/scripts/get_context.py --mode packages`\n"
     )
     output.write("</guidelines>\n\n")
 

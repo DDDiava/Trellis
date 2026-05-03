@@ -5,7 +5,7 @@ import { execFileSync } from "child_process"
 import { platform } from "os"
 import { debugLog } from "./trellis-context.js"
 
-const PYTHON_CMD = platform() === "win32" ? "python" : "python3"
+const PYTHON_CMD = platform() === "win32" ? "python" : "python"
 
 const FIRST_REPLY_NOTICE = `<first-reply-notice>
 On the first visible assistant reply in this session, begin with exactly one short Chinese sentence:
@@ -44,7 +44,7 @@ function getTaskStatus(ctx, platformInput = null) {
   const taskDir = ctx.resolveTaskDir(taskRef)
 
   if (active.stale || !taskDir || !existsSync(taskDir)) {
-    return `Status: STALE POINTER\nTask: ${taskRef}\nSource: ${active.source}\nNext: Task directory not found. Run: python3 ./.trellis/scripts/task.py finish`
+    return `Status: STALE POINTER\nTask: ${taskRef}\nSource: ${active.source}\nNext: Task directory not found. Run: python ./.trellis/scripts/task.py finish`
   }
 
   let taskData = {}
@@ -62,7 +62,7 @@ function getTaskStatus(ctx, platformInput = null) {
 
   if (taskStatus === "completed") {
     const dirName = basename(taskDir)
-    return `Status: COMPLETED\nTask: ${taskTitle}\nSource: ${active.source}\nNext: Archive with \`python3 ./.trellis/scripts/task.py archive ${dirName}\` or start a new task`
+    return `Status: COMPLETED\nTask: ${taskTitle}\nSource: ${active.source}\nNext: Archive with \`python ./.trellis/scripts/task.py archive ${dirName}\` or start a new task`
   }
 
   let hasContext = false
@@ -345,7 +345,7 @@ Read and follow all instructions below carefully.
 
   parts.push(
     "Discover more via: " +
-    "`python3 ./.trellis/scripts/get_context.py --mode packages`"
+    "`python ./.trellis/scripts/get_context.py --mode packages`"
   )
   parts.push("</guidelines>")
 

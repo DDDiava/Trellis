@@ -20,7 +20,7 @@
 On first use, initialize your identity:
 
 ```bash
-python3 ./.trellis/scripts/init_developer.py <your-name>
+python ./.trellis/scripts/init_developer.py <your-name>
 ```
 
 Creates `.trellis/.developer` (gitignored) + `.trellis/workspace/<your-name>/`.
@@ -33,7 +33,7 @@ Creates `.trellis/.developer` (gitignored) + `.trellis/workspace/<your-name>/`.
 - `.trellis/spec/guides/index.md` — cross-package thinking guides.
 
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode packages   # list packages / layers
+python ./.trellis/scripts/get_context.py --mode packages   # list packages / layers
 ```
 
 **When to update spec**: new pattern/convention found · bug-fix prevention to codify · new technical decision.
@@ -44,39 +44,39 @@ Every task has its own directory under `.trellis/tasks/{MM-DD-name}/` holding `p
 
 ```bash
 # Task lifecycle
-python3 ./.trellis/scripts/task.py create "<title>" [--slug <name>] [--parent <dir>]
-python3 ./.trellis/scripts/task.py start <name>          # set active task (session-scoped when available)
-python3 ./.trellis/scripts/task.py current --source      # show active task and source
-python3 ./.trellis/scripts/task.py finish                # clear active task (triggers after_finish hooks)
-python3 ./.trellis/scripts/task.py archive <name>        # move to archive/{year-month}/
-python3 ./.trellis/scripts/task.py list [--mine] [--status <s>]
-python3 ./.trellis/scripts/task.py list-archive
+python ./.trellis/scripts/task.py create "<title>" [--slug <name>] [--parent <dir>]
+python ./.trellis/scripts/task.py start <name>          # set active task (session-scoped when available)
+python ./.trellis/scripts/task.py current --source      # show active task and source
+python ./.trellis/scripts/task.py finish                # clear active task (triggers after_finish hooks)
+python ./.trellis/scripts/task.py archive <name>        # move to archive/{year-month}/
+python ./.trellis/scripts/task.py list [--mine] [--status <s>]
+python ./.trellis/scripts/task.py list-archive
 
 # Code-spec context (injected into implement/check agents via JSONL).
 # `implement.jsonl` / `check.jsonl` are seeded on `task create` for sub-agent-capable
 # platforms; the AI curates real spec + research entries during Phase 1.3.
-python3 ./.trellis/scripts/task.py add-context <name> <action> <file> <reason>
-python3 ./.trellis/scripts/task.py list-context <name> [action]
-python3 ./.trellis/scripts/task.py validate <name>
+python ./.trellis/scripts/task.py add-context <name> <action> <file> <reason>
+python ./.trellis/scripts/task.py list-context <name> [action]
+python ./.trellis/scripts/task.py validate <name>
 
 # Task metadata
-python3 ./.trellis/scripts/task.py set-branch <name> <branch>
-python3 ./.trellis/scripts/task.py set-base-branch <name> <branch>    # PR target
-python3 ./.trellis/scripts/task.py set-scope <name> <scope>
+python ./.trellis/scripts/task.py set-branch <name> <branch>
+python ./.trellis/scripts/task.py set-base-branch <name> <branch>    # PR target
+python ./.trellis/scripts/task.py set-scope <name> <scope>
 
 # PR-first branch/worktree + review flow
-python3 ./.trellis/scripts/task.py worktree <name> [--dry-run]
-python3 ./.trellis/scripts/task.py create-pr [name] [--draft] [--dry-run]
-python3 ./.trellis/scripts/task.py sync-pr [name]
-python3 ./.trellis/scripts/task.py review-pr [name]
-python3 ./.trellis/scripts/task.py finish-pr [name]
+python ./.trellis/scripts/task.py worktree <name> [--dry-run]
+python ./.trellis/scripts/task.py create-pr [name] [--draft] [--dry-run]
+python ./.trellis/scripts/task.py sync-pr [name]
+python ./.trellis/scripts/task.py review-pr [name]
+python ./.trellis/scripts/task.py finish-pr [name]
 
 # Hierarchy (parent/child)
-python3 ./.trellis/scripts/task.py add-subtask <parent> <child>
-python3 ./.trellis/scripts/task.py remove-subtask <parent> <child>
+python ./.trellis/scripts/task.py add-subtask <parent> <child>
+python ./.trellis/scripts/task.py remove-subtask <parent> <child>
 ```
 
-> Run `python3 ./.trellis/scripts/task.py --help` to see the authoritative, up-to-date list.
+> Run `python ./.trellis/scripts/task.py --help` to see the authoritative, up-to-date list.
 
 **PR-first lifecycle**: after planning, create an isolated branch/worktree for non-trivial work, open or stage a draft PR with `create-pr`, keep the Trellis-managed PR body section current with `sync-pr`, generate a local review artifact with `review-pr`, then use `finish-pr` to mark the PR ready for human review. After the PR is merged, reconcile the local base branch with `origin/<base-branch>` before archiving or recording the session. Archive only after the PR is merged and post-merge reconcile is complete, or after the user explicitly confirms local-only completion.
 
@@ -98,15 +98,15 @@ Records every AI session for cross-session tracking under `.trellis/workspace/<d
 - `index.md` — personal index (total sessions, last active).
 
 ```bash
-python3 ./.trellis/scripts/add_session.py --title "Title" --commit "hash" --summary "Summary"
+python ./.trellis/scripts/add_session.py --title "Title" --commit "hash" --summary "Summary"
 ```
 
 ### Context Script
 
 ```bash
-python3 ./.trellis/scripts/get_context.py                            # full session runtime
-python3 ./.trellis/scripts/get_context.py --mode packages            # available packages + spec layers
-python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed guide for a workflow step
+python ./.trellis/scripts/get_context.py                            # full session runtime
+python ./.trellis/scripts/get_context.py --mode packages            # available packages + spec layers
+python ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed guide for a workflow step
 ```
 
 ---
@@ -166,7 +166,7 @@ Phase 3: Finish  → sync/review the PR, reconcile local base after merge, then 
 
 [workflow-state:no_task]
 No active task. **A Direct answer** — pure Q&A / explanation / lookup / chat; no file writes + one-line answer + repo reads ≤ 2 files → AI judges, no override needed.
-**B Create a task** — any implementation / code change / build / refactor work. Entry sequence: (1) `python3 ./.trellis/scripts/task.py create "<title>"` to create the task (status=planning, breadcrumb switches to [workflow-state:planning] for brainstorm + jsonl phase guidance) → (2) load `trellis-brainstorm` skill to discuss requirements with the user and iterate on prd.md → (3) once prd is done and jsonl is curated, run `task.py start <task-dir>` to enter [workflow-state:in_progress] for the implementation skeleton. For research-heavy work, dispatch `trellis-research` sub-agents — main agent must NOT do 3+ inline WebFetch / WebSearch / `gh api` calls. **"It looks small" is NOT grounds for downgrading B to A or C**.
+**B Create a task** — any implementation / code change / build / refactor work. Entry sequence: (1) `python ./.trellis/scripts/task.py create "<title>"` to create the task (status=planning, breadcrumb switches to [workflow-state:planning] for brainstorm + jsonl phase guidance) → (2) load `trellis-brainstorm` skill to discuss requirements with the user and iterate on prd.md → (3) once prd is done and jsonl is curated, run `task.py start <task-dir>` to enter [workflow-state:in_progress] for the implementation skeleton. For research-heavy work, dispatch `trellis-research` sub-agents — main agent must NOT do 3+ inline WebFetch / WebSearch / `gh api` calls. **"It looks small" is NOT grounds for downgrading B to A or C**.
 **C Inline change** (per-turn only, escape hatch for B) — the user's CURRENT message MUST contain one of: "skip trellis" / "no task" / "just do it" / "don't create a task" / "跳过 trellis" / "别走流程" / "小修一下" / "直接改" / "先别建任务" → briefly acknowledge ("ok, skipping trellis flow this turn"), then inline. **Without seeing one of these phrases you must NOT inline on your own**; do not invent an override the user never said.
 [/workflow-state:no_task]
 
@@ -294,8 +294,8 @@ When a user request matches one of these intents, load the corresponding skill (
 At each step, run this to fetch detailed guidance:
 
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode phase --step <step>
-# e.g. python3 ./.trellis/scripts/get_context.py --mode phase --step 1.1
+python ./.trellis/scripts/get_context.py --mode phase --step <step>
+# e.g. python ./.trellis/scripts/get_context.py --mode phase --step 1.1
 ```
 
 ---
@@ -309,7 +309,7 @@ Goal: figure out what to build, produce a clear requirements doc and the context
 Create the task directory (status enters `planning`, the session active-task pointer auto-targets the new task when session identity is available):
 
 ```bash
-python3 ./.trellis/scripts/task.py create "<task title>" --slug <name>
+python ./.trellis/scripts/task.py create "<task title>" --slug <name>
 ```
 
 `--slug` is the human-readable name only. Do **not** include the `MM-DD-` date prefix; `task.py create` adds that prefix automatically.
@@ -318,7 +318,7 @@ After this command succeeds, the per-turn breadcrumb auto-switches to `[workflow
 
 ⚠️ **Run only `create` here — do not also run `start`**. `start` flips status to `in_progress`, which switches the breadcrumb to the implementation phase before brainstorm + jsonl are done — the AI will silently skip them. Save `start` for step 1.4, after jsonl curation is complete.
 
-Skip when `python3 ./.trellis/scripts/task.py current --source` already points to a task.
+Skip when `python ./.trellis/scripts/task.py current --source` already points to a task.
 
 #### 1.1 Requirement exploration `[required · repeatable]`
 
@@ -386,7 +386,7 @@ Curate `implement.jsonl` and `check.jsonl` so the Phase 2 sub-agents get the rig
 **How to discover relevant specs**:
 
 ```bash
-python3 ./.trellis/scripts/get_context.py --mode packages
+python ./.trellis/scripts/get_context.py --mode packages
 ```
 
 Lists every package + its spec layers with paths. Pick the entries that match this task's domain.
@@ -396,8 +396,8 @@ Lists every package + its spec layers with paths. Pick the entries that match th
 Either edit the jsonl file directly in your editor, or use:
 
 ```bash
-python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" implement "<path>" "<reason>"
-python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" check "<path>" "<reason>"
+python ./.trellis/scripts/task.py add-context "$TASK_DIR" implement "<path>" "<reason>"
+python ./.trellis/scripts/task.py add-context "$TASK_DIR" check "<path>" "<reason>"
 ```
 
 Delete the seed `_example` line once real entries exist (optional — it's skipped automatically by consumers).
@@ -417,7 +417,7 @@ Skip this step. Context is loaded directly by the `trellis-before-dev` skill in 
 Once prd.md is complete and 1.3 jsonl curation is done, flip the task status to `in_progress`:
 
 ```bash
-python3 ./.trellis/scripts/task.py start <task-dir>
+python ./.trellis/scripts/task.py start <task-dir>
 ```
 
 After this command succeeds, the breadcrumb auto-switches to `[workflow-state:in_progress]`, and the rest of Phase 2 / 3 follows.
@@ -500,14 +500,14 @@ The platform prelude auto-handles the context load requirement:
 For medium or large tasks, prefer an isolated task branch/worktree before implementation:
 
 ```bash
-python3 ./.trellis/scripts/task.py worktree <task-name> --dry-run
-python3 ./.trellis/scripts/task.py worktree <task-name>
+python ./.trellis/scripts/task.py worktree <task-name> --dry-run
+python ./.trellis/scripts/task.py worktree <task-name>
 ```
 
 When code is ready for review, create or stage the draft PR without making GitHub a hard dependency:
 
 ```bash
-python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
+python ./.trellis/scripts/task.py create-pr <task-name> --draft
 ```
 
 For parallel child tasks, each worker owns the full handoff for its branch/worktree after implementation and check:
@@ -517,10 +517,10 @@ git status
 git add -A
 git commit -m "<task-slug>: <summary>"
 git push -u origin <branch>          # when a remote is configured
-python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
-python3 ./.trellis/scripts/task.py sync-pr <task-name>
-python3 ./.trellis/scripts/task.py review-pr <task-name>
-python3 ./.trellis/scripts/task.py finish-pr <task-name>
+python ./.trellis/scripts/task.py create-pr <task-name> --draft
+python ./.trellis/scripts/task.py sync-pr <task-name>
+python ./.trellis/scripts/task.py review-pr <task-name>
+python ./.trellis/scripts/task.py finish-pr <task-name>
 ```
 
 If the push or GitHub PR path is unavailable, continue the local-only path and record the fallback artifacts/commands in the task directory instead of stopping at implementation.
@@ -576,9 +576,9 @@ If issues are found → fix → re-check, until green.
 Then prepare the PR handoff artifacts:
 
 ```bash
-python3 ./.trellis/scripts/task.py sync-pr <task-name>
-python3 ./.trellis/scripts/task.py review-pr <task-name>
-python3 ./.trellis/scripts/task.py finish-pr <task-name>
+python ./.trellis/scripts/task.py sync-pr <task-name>
+python ./.trellis/scripts/task.py review-pr <task-name>
+python ./.trellis/scripts/task.py finish-pr <task-name>
 ```
 
 #### 3.2 Debug retrospective `[on demand]`
@@ -654,15 +654,15 @@ The AI drives a batched commit of this task's code changes so `/finish-work` can
 Prepare the task PR without making GitHub a hard dependency:
 
 ```bash
-python3 ./.trellis/scripts/task.py sync-pr <task-name>
-python3 ./.trellis/scripts/task.py review-pr <task-name>
-python3 ./.trellis/scripts/task.py finish-pr <task-name>
+python ./.trellis/scripts/task.py sync-pr <task-name>
+python ./.trellis/scripts/task.py review-pr <task-name>
+python ./.trellis/scripts/task.py finish-pr <task-name>
 ```
 
 If no PR has been created yet, run:
 
 ```bash
-python3 ./.trellis/scripts/task.py create-pr <task-name> --draft
+python ./.trellis/scripts/task.py create-pr <task-name> --draft
 ```
 
 For local-only or unauthenticated GitHub environments, leave the generated PR body, review artifact, task metadata, and exact manual push/PR commands in the task directory. Stop here for human review; do not archive before merge.
