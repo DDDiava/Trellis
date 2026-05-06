@@ -38,7 +38,7 @@ For each remaining dirty path, decide whether it belongs to **the current task**
 Then route:
 
 - **Any remaining path looks like current-task work** — bail out with:
-  > "Working tree has uncommitted code changes from this task: `<list>`. Return to workflow Phase 3.4 to commit them before running ``finish-work` (Trellis command)`."
+  > "Working tree has uncommitted code changes from this task: `<list>`. Return to workflow Phase 3.4 to commit them before running `$finish-work`."
 
   Do NOT run `git commit` here. Do NOT prompt the user to commit. The user goes back to Phase 3.4 and the AI drives the batched commit there.
 - **All remaining paths look unrelated** (other parallel-window work) — report them once and continue to Step 3:
@@ -60,7 +60,7 @@ If GitHub CLI or authentication is unavailable, keep the local fallback artifact
 
 If the PR is prepared but not merged, stop here and tell the user:
 
-> "The PR is ready for human review. Merge it, then run ``finish-work` (Trellis command)` again so I can reconcile the local base branch before archiving or journaling."
+> "The PR is ready for human review. Merge it, then run `$finish-work` again so I can reconcile the local base branch before archiving or journaling."
 
 Do not archive by default before merge. Do not archive before merge unless the user explicitly confirms local-only completion.
 

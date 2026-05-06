@@ -575,6 +575,13 @@ describe("resolveSkillsNeutral / resolveAllAsSkillsNeutral", () => {
       expect(match?.content).toBe(five.content);
     }
   });
+
+  it("resolveAllAsSkillsNeutral keeps Codex-only command-as-skill CMD_REF platform-specific", () => {
+    const all = resolveAllAsSkillsNeutral(AI_TOOLS.codex.templateContext);
+    const finishWork = all.find((s) => s.name === "trellis-finish-work");
+    expect(finishWork?.content).toContain("$finish-work");
+    expect(finishWork?.content).not.toContain("{{CMD_REF");
+  });
 });
 
 describe("pull-based prelude injection", () => {

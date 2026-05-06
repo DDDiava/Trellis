@@ -369,17 +369,21 @@ export function resolveSkillsNeutral(ctx: TemplateContext): ResolvedTemplate[] {
 export function resolveAllAsSkillsNeutral(
   ctx: TemplateContext,
 ): ResolvedTemplate[] {
-  const templates = [
-    ...filterCommands(getCommandTemplates(), ctx),
-    ...getSkillTemplates(),
-  ];
-  return templates.map((tmpl) => ({
+  const commands = filterCommands(getCommandTemplates(), ctx).map((tmpl) => ({
+    name: `trellis-${tmpl.name}`,
+    content: wrapWithSkillFrontmatter(
+      `trellis-${tmpl.name}`,
+      resolvePlaceholders(tmpl.content, ctx),
+    ),
+  }));
+  const skills = getSkillTemplates().map((tmpl) => ({
     name: `trellis-${tmpl.name}`,
     content: wrapWithSkillFrontmatter(
       `trellis-${tmpl.name}`,
       resolvePlaceholdersNeutral(tmpl.content, ctx),
     ),
   }));
+  return [...commands, ...skills];
 }
 
 /**
