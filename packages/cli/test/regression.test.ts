@@ -1012,6 +1012,18 @@ describe("regression: current-task path normalization", () => {
     return content ?? "";
   }
 
+  function expectCodexSubAgentNotice(context: string): void {
+    expect(context.startsWith("<sub-agent-notice>")).toBe(true);
+    expect(context).toContain("SUB-AGENT NOTICE");
+    expect(context).toContain("spawn_agent");
+    expect(context).toContain("that message is your only job");
+    expect(context).toContain("Do NOT call task.py start");
+    expect(context).toContain("task.py add-context");
+    expect(context).toContain("Do NOT call wait_agent or spawn_agent");
+    expect(context).toContain(".trellis/tasks/*");
+    expect(context).toContain("main interactive Codex session");
+  }
+
   it("[session-current-task] task.py start without context key enters degraded mode (returns 0, no pointer)", () => {
     // 0.5.3 hotfix: task.py start no longer hard-fails when no session identity
     // is available (Windows + Claude Code, --continue resume, etc.). Instead it
@@ -2005,6 +2017,30 @@ describe("regression: current-task path normalization", () => {
     }
   });
 
+  it("[#240] Codex SessionStart output starts with the generic sub-agent notice", () => {
+    setupTaskRepo();
+    writeProjectFile(
+      path.join(".codex", "hooks", "session-start.py"),
+      expectTemplateContent(codexSessionStart, "codex session-start"),
+    );
+
+    const payload = JSON.parse(
+      runPython(
+        path.join(".codex", "hooks", "session-start.py"),
+        JSON.stringify({ cwd: tmpDir }),
+      ),
+    ) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+
+    const ctx = payload.hookSpecificOutput.additionalContext;
+    expect(payload.hookSpecificOutput.hookEventName).toBe("SessionStart");
+    expectCodexSubAgentNotice(ctx);
+    expect(ctx.indexOf("</sub-agent-notice>")).toBeLessThan(
+      ctx.indexOf("<session-context>"),
+    );
+  });
+
   it("[session-start-proof] Copilot template does not promise model-visible SessionStart injection", () => {
     const content = expectTemplateContent(
       copilotSessionStart,
@@ -2444,6 +2480,30 @@ describe("regression: current-task path normalization", () => {
     );
   });
 
+  it("[#240] Codex workflow-state output starts with the generic sub-agent notice", () => {
+    setupTaskRepo();
+    writeProjectFile(
+      path.join(".codex", "hooks", "inject-workflow-state.py"),
+      expectTemplateContent(injectWorkflowStateScript, "inject-workflow-state"),
+    );
+
+    const parsed = JSON.parse(
+      runPython(
+        path.join(".codex", "hooks", "inject-workflow-state.py"),
+        JSON.stringify({ cwd: tmpDir, session_id: "workflow-a" }),
+      ),
+    ) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+
+    const ctx = parsed.hookSpecificOutput.additionalContext;
+    expect(parsed.hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
+    expectCodexSubAgentNotice(ctx);
+    expect(ctx.indexOf("</sub-agent-notice>")).toBeLessThan(
+      ctx.indexOf("<workflow-state>"),
+    );
+  });
+
   it("[workflow-state] silent exit 0 when not a Trellis project (no .trellis/ dir)", () => {
     // No .trellis/ at all — hook should silently exit
     writeWorkflowStateHook();
@@ -2698,6 +2758,64 @@ print(len(entries))
     expect(match).toBeTruthy();
     const body = match?.[1] ?? "";
     expect(body).toMatch(/commit \(Phase 3\.4\)/i);
+  });
+
+  it("[issue-237] all implement/check agent templates contain recursion guards", () => {
+    const templateRoot = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "src",
+      "templates",
+    );
+    const agentFiles = [
+      "claude/agents/trellis-implement.md",
+      "claude/agents/trellis-check.md",
+      "codebuddy/agents/trellis-implement.md",
+      "codebuddy/agents/trellis-check.md",
+      "codex/agents/trellis-implement.toml",
+      "codex/agents/trellis-check.toml",
+      "cursor/agents/trellis-implement.md",
+      "cursor/agents/trellis-check.md",
+      "gemini/agents/trellis-implement.md",
+      "gemini/agents/trellis-check.md",
+      "kiro/agents/trellis-implement.json",
+      "kiro/agents/trellis-check.json",
+      "opencode/agents/trellis-implement.md",
+      "opencode/agents/trellis-check.md",
+      "pi/agents/trellis-implement.md",
+      "pi/agents/trellis-check.md",
+      "qoder/agents/trellis-implement.md",
+      "qoder/agents/trellis-check.md",
+    ];
+
+    for (const relativePath of agentFiles) {
+      const content = fs.readFileSync(path.join(templateRoot, relativePath), "utf-8");
+      expect(content, `${relativePath} should mention recursion guard`).toMatch(
+        /Recursion guard|Recursion Guard/,
+      );
+      expect(content, `${relativePath} should scope dispatch to main session`).toContain(
+        "main session",
+      );
+      expect(content, `${relativePath} should mention workflow-state safety`).toMatch(
+        /workflow-state breadcrumbs|workflow.md/,
+      );
+
+      if (relativePath.includes("implement")) {
+        expect(content, `${relativePath} should forbid nested implement`).toContain(
+          "spawn another `trellis-implement`",
+        );
+        expect(content, `${relativePath} should forbid nested check`).toContain(
+          "`trellis-check`",
+        );
+      } else {
+        expect(content, `${relativePath} should forbid nested check`).toContain(
+          "spawn another `trellis-check`",
+        );
+        expect(content, `${relativePath} should forbid nested implement`).toContain(
+          "`trellis-implement`",
+        );
+      }
+    }
   });
 
   it("[workflow-state-r2] template workflow.md [workflow-state:planning] mentions Phase 1.3 + jsonl curation", () => {
@@ -4463,9 +4581,10 @@ describe("regression: Gemini CLI 0.40.x template compatibility (#224)", () => {
       "packages/cli/src/templates/shared-hooks/inject-workflow-state.py",
     );
     const content = fs.readFileSync(hookPath, "utf-8");
-    // The platform branch: `"BeforeAgent" if _detect_platform(...) == "gemini"`
+    // The platform branch: `"BeforeAgent" if platform == "gemini"`
+    expect(content).toContain("platform = _detect_platform(data)");
     expect(content).toMatch(
-      /"BeforeAgent"\s+if\s+_detect_platform\([^)]*\)\s*==\s*"gemini"\s+else\s+"UserPromptSubmit"/,
+      /"BeforeAgent"\s+if\s+platform\s*==\s*"gemini"\s+else\s+"UserPromptSubmit"/,
     );
   });
 
