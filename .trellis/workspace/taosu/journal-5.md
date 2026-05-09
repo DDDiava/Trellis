@@ -439,3 +439,212 @@ Hardened workflow-state and implement/check agent prompts against recursive Trel
 ### Next Steps
 
 - None - task complete
+
+
+## Session 149: 0.5.7 release + Codex dispatch mode + mem unit tests + 0.6 beta sync
+
+**Date**: 2026-05-08
+**Task**: 0.5.7 release + Codex dispatch mode + mem unit tests + 0.6 beta sync
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Shipped 0.5.7 with Codex configurable dispatch mode (codex.dispatch_mode=sub-agent|inline) + new configSectionsAdded manifest field (generic mechanism for future config additions, append-only / idempotent). Tracked Codex 0.129 features.codex_hooks→features.hooks rename + new /hooks TUI approval gate across docs / spec / runtime warning / uninstall scrubber. Found and fixed parser bug in trellis_config.py during dogfood (inline # comments not stripped, breaking inline-mode detection). Merged main into feat/v0.6.0-beta to bring 0.5.5/0.5.6/0.5.7 into beta. Added 84 unit tests for trellis mem command (1461 LoC POC integrated to v0.6.0-beta with 0 coverage); 81.89% statement coverage achieved; only export annotations on mem.ts (no logic edits). Vitest 1019/1019, lint+typecheck green. npm 0.5.7 published as latest tag.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `278b40a` | (see git log) |
+| `b5b23fb` | (see git log) |
+| `b02faf1` | (see git log) |
+| `b829b14` | (see git log) |
+| `1ac65c2` | (see git log) |
+| `1222f36` | (see git log) |
+| `c10ded7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 150: ship 0.5.9 + 0.6.0-beta.1; fix mem --since cross-day; spec audit batches A+B+C+D
+
+**Date**: 2026-05-08
+**Task**: ship 0.5.9 + 0.6.0-beta.1; fix mem --since cross-day; spec audit batches A+B+C+D
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Released 0.5.9 (main) and 0.6.0-beta.1 (feat/v0.6.0-beta) shipping the codex dispatch namespace fix + default inline. Restored 0.6.0-beta.0.json on main for manifest continuity. Fixed tl mem list/search --since to respect cross-day session activity (interval-overlap helper, +23 tests, 1023→1046). Ran full spec audit (48 findings); cleared all P0 + mechanical P1 (Batch A+B+C+D): script-conventions task_context init-context drop, workflow-state-contract writer-table line-number refresh, quality-guidelines + unit-test conventions init.ts:931→:1081, directory-structure tree refresh, docs-site architecture.mdx .current-task fallback claim corrected EN+ZH. Out of scope: Batch E new spec files (mem.md/update.md/uninstall.md/uninstall-scrubbers.md/configurator-shared-helpers.md), Batch F docs-site Mode taxonomy + ai-tools coverage decisions, codex perf one-sided f.until prune, readJsonlFirst streaming, residual MEMORY.md iflow notes.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4b90152` | (see git log) |
+| `89bb3a0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 151: spec batch E: 5 new specs for uncovered modules + mem search-index-gap doc
+
+**Date**: 2026-05-08
+**Task**: spec batch E: 5 new specs for uncovered modules + mem search-index-gap doc
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Spawned 5 parallel trellis-implement agents to author commands-mem.md (634), commands-update.md (383), commands-uninstall.md (306), uninstall-scrubbers.md (330), configurator-shared.md (309) — total 1962 lines new spec content. trellis-check single agent reviewed bundle: style consistency (all 5 mirror platform-integration.md), 10 sampled file.ts:symbolName refs all resolved, fixed 1 stale uninstall-scrubbers.md ref (performUninstall→uninstall), updated backend/index.md with 5 rows + 4 checklist lines. Added 'Search index gaps (known limitations)' section to commands-mem.md documenting that tool_use / thinking / tool_result fields are excluded from search index — users searching for tool/skill/agent names should use raw grep over JSONL. Code untouched, 1046/1046 tests pass. Local commit only — not pushed per user directive.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d7341cb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 152: feat: tl mem extract --phase brainstorm|implement|all (cross-day fix already in 0.6.0-beta.2)
+
+**Date**: 2026-05-08
+**Task**: feat: tl mem extract --phase brainstorm|implement|all (cross-day fix already in 0.6.0-beta.2)
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Added --phase flag to tl mem extract for slicing session into [task.py create, task.py start) brainstorm windows. Boundary signal: regex match on Bash tool_use commands with 6+ invoker variants (python/python3/py -3/no prefix, forward/backward/double-escaped slashes, abs/rel paths) and false-positive guards. Single-pass collector emits cleaned turns + task.py events with turnIndex (necessary because the cleaning pipeline drops tool_use). Multi-task pairing: slug match > FIFO; missing-pair fallbacks. Codex/OpenCode degrade to full dialogue + stderr warning. trellis-check caught a real bug (pre-compact task.py events not reset on compaction → stale turnIndex into collapsed [compact summary] surface) and pinned a regression test. Tests: 1046 → 1079 (+33). Spec: commands-mem.md adds ## Phase slicing (--phase) section. Local commit only — not pushed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a16b8d9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 153: fix(mem): OpenCode SQLite reader (1.2+ users restored, perf streaming, --phase dogfood fixes)
+
+**Date**: 2026-05-08
+**Task**: fix(mem): OpenCode SQLite reader (1.2+ users restored, perf streaming, --phase dogfood fixes)
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Major mem.ts overhaul on feat/v0.6.0-beta. (1) Batch E new spec files (commands-{mem,update,uninstall}.md, uninstall-scrubbers.md, configurator-shared.md, +index.md). (2) Added --phase brainstorm|implement|all to mem extract with task.py create/start boundary detection. (3) Dogfood-driven robustness: shell-arg $(...) closing-paren strip, multi-task.py-per-Bash-command, prose rejection, MM-DD- prefix strip; Codex collectCodexTurnsAndEvents. (4) perf: chunked sync streaming readJsonl + byte-prefix fast-reject — list 3.5s→0.67s (5x), extract 5.8s→0.73s (8x), heap from 36MB→256KB. (5) OpenCode SQLite reader replaces obsolete JSON-tree reader: 138 sessions visible (was 0), search 0.235s on 678 messages. better-sqlite3 added as deps with createRequire bridge for ESM, pnpm.onlyBuiltDependencies for native binding install, dynamic PRAGMA schema defense, soft-degrade if dep load fails. 1085 → 1087 tests. NOT pushed per user directive.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d7341cb` | (see git log) |
+| `a16b8d9` | (see git log) |
+| `a992325` | (see git log) |
+| `7e8f30c` | (see git log) |
+| `f26c5fd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 154: marketplace mem-recall: add --phase brainstorm + symlink user local
+
+**Date**: 2026-05-09
+**Task**: marketplace mem-recall: add --phase brainstorm + symlink user local
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Updated marketplace/skills/mem-recall/SKILL.md to match 0.6.0-beta.3: prereq bump, 6 new brainstorm-rationale trigger phrases, new --phase brainstorm section with 5 examples, OpenCode row → SQLite, parent_id rename. Replaced user local ~/.claude/skills/chat-history-recall (old TS POC) with symlink to marketplace mem-recall. trellis-check caught 3 Codex-as-degraded mistakes (Codex actually supports phase), fixed. commands-mem.md spec also has same stale Codex degradation table — out of scope, follow-up.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b397638` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

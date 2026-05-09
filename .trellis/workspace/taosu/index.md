@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 148
-- **Last Active**: 2026-05-06
+- **Total Sessions**: 154
+- **Last Active**: 2026-05-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~441 | Active |
+| `journal-5.md` | ~650 | Active |
 | `journal-4.md` | ~1975 | Archived |
 | `journal-3.md` | ~1988 | Archived |
 | `journal-2.md` | ~1963 | Archived |
@@ -33,6 +33,12 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 154 | 2026-05-09 | marketplace mem-recall: add --phase brainstorm + symlink user local | `b397638` | `feat/v0.6.0-beta` |
+| 153 | 2026-05-08 | fix(mem): OpenCode SQLite reader (1.2+ users restored, perf streaming, --phase dogfood fixes) | `d7341cb`, `a16b8d9`, `a992325`, `7e8f30c`, `f26c5fd` | `feat/v0.6.0-beta` |
+| 152 | 2026-05-08 | feat: tl mem extract --phase brainstorm|implement|all (cross-day fix already in 0.6.0-beta.2) | `a16b8d9` | `feat/v0.6.0-beta` |
+| 151 | 2026-05-08 | spec batch E: 5 new specs for uncovered modules + mem search-index-gap doc | `d7341cb` | `feat/v0.6.0-beta` |
+| 150 | 2026-05-08 | ship 0.5.9 + 0.6.0-beta.1; fix mem --since cross-day; spec audit batches A+B+C+D | `4b90152`, `89bb3a0` | `feat/v0.6.0-beta` |
+| 149 | 2026-05-08 | 0.5.7 release + Codex dispatch mode + mem unit tests + 0.6 beta sync | `278b40a`, `b5b23fb`, `b02faf1`, `b829b14`, `1ac65c2`, `1222f36`, `c10ded7` | `feat/v0.6.0-beta` |
 | 148 | 2026-05-06 | Workflow-state recursion guard | `0db57e5`, `48f966e` | `feat/v0.6.0-beta` |
 | 147 | 2026-05-06 | Release 0.5.3: class-1 sub-agent context fallback + non-blocking task.py start | `6272a9e`, `1adb7b0`, `5b298ba`, `a7d54ec` | `feat/v0.6.0-beta` |
 | 146 | 2026-05-06 | Release 0.5.2: Python <=3.11 f-string SyntaxError hotfix in session-start hooks | `3f1711b`, `263c8c6`, `601f213`, `2468cb2`, `5ad1e21` | `main` |
