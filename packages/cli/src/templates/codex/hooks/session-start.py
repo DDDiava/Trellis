@@ -298,35 +298,13 @@ def _extract_range(content: str, start_header: str, end_header: str) -> str:
 
 
 _BREADCRUMB_TAG_RE = re.compile(
-    r"\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n.*?\n\s*\[/workflow-state:\1\]",
+    r"\[workflow-state:([A-Za-z0-9_-]+)\]\s*(?:\n|\\n).*?(?:\n|\\n)\s*\[/workflow-state:\1\]",
     re.DOTALL,
 )
 
 
 def _strip_breadcrumb_tag_blocks(content: str) -> str:
-    output = []
-    cursor = 0
-    open_re = re.compile(r"\[workflow-state:([A-Za-z0-9_-]+)\]")
-
-    while True:
-        match = open_re.search(content, cursor)
-        if match is None:
-            output.append(content[cursor:])
-            break
-
-        status = match.group(1)
-        close_marker = f"[/workflow-state:{status}]"
-        close_start = content.find(close_marker, match.end())
-        if close_start == -1:
-            output.append(content[cursor:])
-            break
-
-        output.append(content[cursor:match.start()])
-        cursor = close_start + len(close_marker)
-        if cursor < len(content) and content[cursor : cursor + 1] == "\n":
-            cursor += 1
-
-    return "".join(output)
+    return _BREADCRUMB_TAG_RE.sub("", content)
 
 
 def _build_workflow_toc(workflow_path: Path) -> str:
